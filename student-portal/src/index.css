@@ -1,0 +1,172 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================
+   College ERP - Admin Portal Styles
+   ============================================ */
+
+/* Base styles */
+@layer base {
+  * {
+    @apply border-white/10;
+  }
+
+  html {
+    @apply scroll-smooth;
+  }
+
+  body {
+    @apply bg-bg-primary text-text-primary font-sans antialiased;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    @apply w-2 h-2;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-bg-secondary;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-white/20 rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-white/30;
+  }
+}
+
+/* Component styles */
+@layer components {
+  /* Glassmorphism card */
+  .glass-card {
+    @apply bg-gradient-to-br from-bg-secondary/95 to-bg-tertiary/95;
+    @apply backdrop-blur-xl;
+    @apply border border-white/10;
+    @apply rounded-lg;
+    @apply shadow-card;
+    @apply transition-all duration-200 ease-out;
+  }
+
+  .glass-card:hover {
+    @apply shadow-elevated;
+    @apply border-primary/30;
+    @apply -translate-y-1;
+  }
+
+  /* Button variants */
+  .btn-primary {
+    @apply bg-gradient-primary;
+    @apply text-white font-semibold;
+    @apply px-6 py-3;
+    @apply rounded-md;
+    @apply shadow-glow-blue;
+    @apply transition-all duration-200 ease-out;
+    @apply hover:-translate-y-0.5 hover:shadow-elevated;
+    @apply active:scale-95;
+    @apply disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none;
+  }
+
+  .btn-secondary {
+    @apply bg-transparent;
+    @apply border border-primary/30;
+    @apply text-primary font-semibold;
+    @apply px-6 py-3;
+    @apply rounded-md;
+    @apply transition-all duration-200 ease-out;
+    @apply hover:bg-primary/10 hover:border-primary;
+  }
+
+  .btn-ghost {
+    @apply bg-transparent;
+    @apply text-text-secondary font-medium;
+    @apply px-4 py-2;
+    @apply rounded-md;
+    @apply transition-all duration-200 ease-out;
+    @apply hover:bg-white/5 hover:text-text-primary;
+  }
+
+  /* Input styles */
+  .input {
+    @apply w-full;
+    @apply px-4 py-3;
+    @apply bg-white/5;
+    @apply border border-white/10;
+    @apply rounded-md;
+    @apply text-text-primary;
+    @apply placeholder:text-text-muted;
+    @apply transition-all duration-200 ease-out;
+    @apply focus:outline-none focus:border-primary focus:bg-white/10;
+    @apply focus:ring-2 focus:ring-primary/20;
+  }
+
+  /* Sidebar styles */
+  .sidebar-item {
+    @apply flex items-center gap-3;
+    @apply px-4 py-3;
+    @apply rounded-md;
+    @apply text-text-secondary font-medium;
+    @apply transition-all duration-200 ease-out;
+    @apply cursor-pointer;
+  }
+
+  .sidebar-item:hover {
+    @apply bg-white/5 text-text-primary;
+  }
+
+  .sidebar-item.active {
+    @apply bg-primary/10 text-primary;
+  }
+
+  /* Badge */
+  .badge {
+    @apply inline-flex items-center justify-center;
+    @apply px-2 py-0.5;
+    @apply text-xs font-medium;
+    @apply rounded-full;
+  }
+
+  .badge-success {
+    @apply bg-success/20 text-success;
+  }
+
+  .badge-warning {
+    @apply bg-warning/20 text-warning;
+  }
+
+  .badge-error {
+    @apply bg-error/20 text-error;
+  }
+
+  .badge-info {
+    @apply bg-info/20 text-info;
+  }
+
+  /* Skeleton loading */
+  .skeleton {
+    @apply animate-shimmer;
+    @apply bg-gradient-to-r from-white/5 via-white/10 to-white/5;
+    @apply bg-[length:200%_100%];
+    @apply rounded-md;
+  }
+}
+
+/* Utility classes */
+@layer utilities {
+  /* Hide scrollbar but allow scrolling */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Text gradient */
+  .text-gradient {
+    @apply bg-gradient-primary bg-clip-text text-transparent;
+  }
+}

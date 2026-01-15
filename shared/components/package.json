@@ -1,0 +1,38 @@
+{
+    "name": "@college-erp/components",
+    "version": "1.0.0",
+    "private": true,
+    "type": "module",
+    "description": "College ERP Shared Component Library",
+    "main": "./dist/index.js",
+    "module": "./dist/index.mjs",
+    "types": "./dist/index.d.ts",
+    "exports": {
+        ".": {
+            "import": "./dist/index.mjs",
+            "require": "./dist/index.js",
+            "types": "./dist/index.d.ts"
+        },
+        "./styles": "./dist/styles.css"
+    },
+    "scripts": {
+        "build": "tsup src/index.ts --format cjs,esm --dts --external react",
+        "dev": "tsup src/index.ts --format cjs,esm --dts --external react --watch",
+        "typecheck": "tsc --noEmit"
+    },
+    "peerDependencies": {
+        "react": "^18.2.0",
+        "react-dom": "^18.2.0"
+    },
+    "dependencies": {
+        "@college-erp/types": "*",
+        "lucide-react": "^0.356.0",
+        "clsx": "^2.1.0"
+    },
+    "devDependencies": {
+        "@types/react": "^18.2.64",
+        "@types/react-dom": "^18.2.21",
+        "tsup": "^8.0.2",
+        "typescript": "^5.4.2"
+    }
+}

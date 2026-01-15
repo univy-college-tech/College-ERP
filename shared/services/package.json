@@ -1,0 +1,34 @@
+{
+    "name": "@college-erp/services",
+    "version": "1.0.0",
+    "private": true,
+    "type": "module",
+    "description": "College ERP Shared Services (Auth, API, etc.)",
+    "main": "./dist/index.js",
+    "module": "./dist/index.mjs",
+    "types": "./dist/index.d.ts",
+    "exports": {
+        ".": {
+            "import": "./dist/index.mjs",
+            "require": "./dist/index.js",
+            "types": "./dist/index.d.ts"
+        }
+    },
+    "scripts": {
+        "build": "tsup src/index.ts --format cjs,esm --dts --external react",
+        "dev": "tsup src/index.ts --format cjs,esm --dts --external react --watch",
+        "typecheck": "tsc --noEmit"
+    },
+    "peerDependencies": {
+        "react": "^18.2.0"
+    },
+    "dependencies": {
+        "@college-erp/types": "*",
+        "@supabase/supabase-js": "^2.42.0"
+    },
+    "devDependencies": {
+        "@types/react": "^18.2.64",
+        "tsup": "^8.0.2",
+        "typescript": "^5.4.2"
+    }
+}

@@ -1,0 +1,66 @@
+{
+  "name": "college-erp",
+  "version": "1.0.0",
+  "private": true,
+  "description": "College ERP System - Modern, mobile-first, role-based academic management system",
+  "workspaces": [
+    "admin-portal",
+    "professor-portal",
+    "student-portal",
+    "admin-backend",
+    "academic-backend",
+    "shared/*"
+  ],
+  "scripts": {
+    "dev:admin": "npm run dev -w admin-portal",
+    "dev:professor": "npm run dev -w professor-portal",
+    "dev:student": "npm run dev -w student-portal",
+    "dev:admin-api": "npm run dev -w admin-backend",
+    "dev:academic-api": "npm run dev -w academic-backend",
+    "dev:all-frontends": "concurrently \"npm run dev:admin\" \"npm run dev:professor\" \"npm run dev:student\"",
+    "dev:all-backends": "concurrently \"npm run dev:admin-api\" \"npm run dev:academic-api\"",
+    "dev:all": "concurrently \"npm run dev:all-frontends\" \"npm run dev:all-backends\"",
+    "build:admin": "npm run build -w admin-portal",
+    "build:professor": "npm run build -w professor-portal",
+    "build:student": "npm run build -w student-portal",
+    "build:admin-api": "npm run build -w admin-backend",
+    "build:academic-api": "npm run build -w academic-backend",
+    "build:all": "npm run build:admin && npm run build:professor && npm run build:student && npm run build:admin-api && npm run build:academic-api",
+    "lint": "eslint . --ext .ts,.tsx,.js,.jsx",
+    "lint:fix": "eslint . --ext .ts,.tsx,.js,.jsx --fix",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,css,scss,md}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,css,scss,md}\"",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf node_modules **/node_modules **/dist **/build",
+    "prepare": "husky install"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "@typescript-eslint/parser": "^7.0.0",
+    "concurrently": "^8.2.2",
+    "eslint": "^8.57.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-import": "^2.29.1",
+    "eslint-plugin-react": "^7.34.1",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "husky": "^9.0.11",
+    "lint-staged": "^15.2.2",
+    "prettier": "^3.2.5",
+    "typescript": "^5.4.2"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,css,scss,md}": [
+      "prettier --write"
+    ]
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "author": "College ERP Team",
+  "license": "UNLICENSED"
+}
