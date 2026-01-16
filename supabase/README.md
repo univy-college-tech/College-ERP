@@ -13,6 +13,7 @@ Supabase restricts direct access to the `auth` schema. The migrations have been 
 
 Run these in order in the Supabase SQL Editor:
 
+### Core Migrations (Required)
 1. `00001_initial_setup.sql` - Extensions, audit_logs, users table
 2. `00002_organizational_structure.sql` - Departments, profiles (student, professor, admin)
 3. `00003_academic_time_structure.sql` - Academic years, semesters, batches, courses, branches, sections, classes
@@ -27,6 +28,14 @@ Run these in order in the Supabase SQL Editor:
 12. `00012_support_tickets.sql` - Support tickets and messages
 13. `00013_rls_policies.sql` - Row Level Security policies
 14. `00014_database_functions.sql` - Common query functions
+
+### Additional Migrations (For Enhanced Batch Management)
+These migrations add many-to-many relationships for more flexible academic structure:
+
+15. `add_batch_courses.sql` - Links courses to batches (many-to-many), adds views
+16. `add_batch_branches.sql` - Links branches to batches (many-to-many), adds batch_id to classes
+
+**⚠️ Important**: Run `add_batch_courses.sql` and `add_batch_branches.sql` to enable the full Batch Detail page functionality in the Admin Portal.
 
 ## Running Migrations
 
@@ -53,6 +62,10 @@ supabase db push
 
 ### Option 3: Quick Setup (Combined Migration)
 Use `combined_migration.sql` which contains all migrations in one file.
+
+**Note**: For the new batch-course and batch-branch relationships, also run:
+- `add_batch_courses.sql`
+- `add_batch_branches.sql`
 
 ## Common Issues
 

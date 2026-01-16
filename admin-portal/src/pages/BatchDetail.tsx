@@ -7,15 +7,14 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
     Plus,
     ChevronRight,
-    ArrowLeft,
-    Users,
-    BookOpen,
-    X,
+    GitBranch,
     Loader2,
-    AlertCircle,
+    Link2,
+    BookOpen,
+    Users,
+    X,
     CheckCircle,
-    Edit,
-    Trash2,
+    AlertCircle
 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 
@@ -37,8 +36,6 @@ interface Batch {
     id: string;
     batch_name: string;
     batch_year: number;
-    start_year: number;
-    end_year: number;
     is_active: boolean;
 }
 
@@ -47,9 +44,21 @@ interface Course {
     course_name: string;
     course_code: string;
     duration_years: number;
-    total_semesters: number;
-    is_active: boolean;
-    branch_count?: number;
+}
+
+interface Branch {
+    id: string;
+    branch_name: string;
+    branch_code: string;
+    course_id: string;
+    courses?: Course; // Joined course data
+}
+
+interface Class {
+    id: string;
+    class_label: string; // e.g. "2024-CSE-A"
+    branch_id: string;
+    student_count?: number;
 }
 
 // ============================================
@@ -61,57 +70,120 @@ export default function BatchDetail() {
     const navigate = useNavigate();
 
     const [batch, setBatch] = useState<Batch | null>(null);
+
+    // Grouped Data
     const [courses, setCourses] = useState<Course[]>([]);
+    const [branchesByCourse, setBranchesByCourse] = useState<Record<string, Branch[]>>({});
+    const [classesByBranch, setClassesByBranch] = useState<Record<string, Class[]>>({});
+
+    // Accordion State: { [courseId]: boolean }
+    const [expandedCourses, setExpandedCourses] = useState<Record<string, boolean>>({});
+
+    // Linking Data
+    const [allCourses, setAllCourses] = useState<Course[]>([]);
+    // const [allBranches, setAllBranches] = useState<Branch[]>([]);
+
     const [loading, setLoading] = useState(true);
-    const [isModalOpen, setIsModalOpen] = useState(false);
-    const [formData, setFormData] = useState({
-        course_name: '',
-        course_code: '',
-        duration_years: 4,
-        total_semesters: 8,
+
+    // Modals
+    const [isLinkCourseModalOpen, setIsLinkCourseModalOpen] = useState(false);
+    // const [isLinkBranchModalOpen, setIsLinkBranchModalOpen] = useState(false);
+    const [isCreateBranchModalOpen, setIsCreateBranchModalOpen] = useState(false);
+    const [isCreateClassModalOpen, setIsCreateClassModalOpen] = useState(false);
+
+    // Forms
+    const [selectedCourseId, setSelectedCourseId] = useState('');
+    const [targetBranchId, setTargetBranchId] = useState('');
+    const [classLabel, setClassLabel] = useState('');
+
+    const [createBranchData, setCreateBranchData] = useState({
+        course_id: '',
+        branch_name: '',
+        branch_code: ''
     });
+
     const [submitting, setSubmitting] = useState(false);
     const [successMessage, setSuccessMessage] = useState('');
     const [errorMessage, setErrorMessage] = useState('');
 
-    // Fetch batch and courses
+    // Fetch Data
     useEffect(() => {
         const fetchData = async () => {
-            if (!supabase || !batchId) {
-                // Mock data
-                setBatch({ id: batchId || '1', batch_name: '2024-2028', batch_year: 2024, start_year: 2024, end_year: 2028, is_active: true });
-                setCourses([
-                    { id: '1', course_name: 'B.Tech Computer Science', course_code: 'BTCS', duration_years: 4, total_semesters: 8, is_active: true, branch_count: 3 },
-                    { id: '2', course_name: 'B.Tech Electronics', course_code: 'BTEC', duration_years: 4, total_semesters: 8, is_active: true, branch_count: 2 },
-                    { id: '3', course_name: 'BBA', course_code: 'BBA', duration_years: 3, total_semesters: 6, is_active: true, branch_count: 1 },
-                ]);
-                setLoading(false);
-                return;
-            }
+            if (!supabase || !batchId) return;
 
             try {
-                // Fetch batch
+                // 1. Fetch Batch
                 const { data: batchData, error: batchError } = await supabase
-                    .from('batches')
-                    .select('*')
-                    .eq('id', batchId)
-                    .single();
-
+                    .from('batches').select('*').eq('id', batchId).single();
                 if (batchError) throw batchError;
                 setBatch(batchData);
 
-                // Fetch courses
-                const { data: coursesData, error: coursesError } = await supabase
-                    .from('courses')
-                    .select('*')
-                    .eq('is_active', true)
-                    .order('course_name');
+                // 2. Fetch Linked Courses
+                const { data: bcData } = await supabase
+                    .from('batch_courses')
+                    .select('course_id, courses(*)')
+                    .eq('batch_id', batchId)
+                    .eq('is_active', true);
 
-                if (coursesError) throw coursesError;
-                setCourses(coursesData || []);
+                const linkedC = (bcData || []).map((item: any) => item.courses).filter((c: any) => !!c) as Course[];
+                setCourses(linkedC);
+
+                // Default expand all
+                const expanded: Record<string, boolean> = {};
+                linkedC.forEach((c: Course) => expanded[c.id] = true);
+                setExpandedCourses(expanded);
+
+                // 3. Fetch Linked Branches
+                const { data: bbData } = await supabase
+                    .from('batch_branches')
+                    .select('branch_id, branches(*, courses(id, course_name, course_code))')
+                    .eq('batch_id', batchId)
+                    .eq('is_active', true);
+
+                const linkedB = (bbData || []).map((item: any) => item.branches).filter((b: any) => !!b) as Branch[];
+
+                // Group Branches by Course
+                const bByC: Record<string, Branch[]> = {};
+                linkedC.forEach((c: Course) => bByC[c.id] = []);
+                linkedB.forEach((b: Branch) => {
+                    if (bByC[b.course_id]) {
+                        bByC[b.course_id].push(b);
+                    } else {
+                        // Handle orphan branches (course not linked explicitly but branch is)?
+                        // Should technically link course if branch is linked, but maybe not enforced.
+                        if (!bByC['orphan']) bByC['orphan'] = [];
+                        bByC['orphan'].push(b);
+                    }
+                });
+                setBranchesByCourse(bByC);
+
+                // 4. Fetch Classes
+                const { data: classesData } = await supabase
+                    .from('classes')
+                    .select('*')
+                    .eq('batch_id', batchId)
+                    .eq('is_active', true)
+                    .order('class_label');
+
+                const cByB: Record<string, Class[]> = {};
+                linkedB.forEach((b: Branch) => cByB[b.id] = []);
+                (classesData || []).forEach((cls: Class) => {
+                    if (cByB[cls.branch_id]) {
+                        cByB[cls.branch_id]!.push(cls);
+                    }
+                });
+                setClassesByBranch(cByB);
+
+                // 5. Fetch available data for linking
+                const { data: allC } = await supabase.from('courses').select('*').eq('is_active', true).order('course_name');
+                setAllCourses(allC || []);
+
+                // const { data: allB } = await supabase.from('branches').select('*, courses(course_name, course_code)').eq('is_active', true).order('branch_name');
+                // setAllBranches(allB || []);
+
             } catch (error) {
-                console.error('Error fetching data:', error);
-                setErrorMessage('Failed to load batch details');
+                console.error(error);
+                setErrorMessage('Failed to load details');
             } finally {
                 setLoading(false);
             }
@@ -120,64 +192,110 @@ export default function BatchDetail() {
         fetchData();
     }, [batchId]);
 
-    // Handle add course
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
+    // Handlers
+    const toggleCourse = (courseId: string) => {
+        setExpandedCourses(prev => ({ ...prev, [courseId]: !prev[courseId] }));
+    };
+
+    const handleLinkCourse = async () => {
+        if (!supabase || !batchId || !selectedCourseId) return;
         setSubmitting(true);
-        setErrorMessage('');
-
         try {
-            const response = await fetch('http://localhost:4003/api/admin/v1/academic/courses', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(formData),
-            });
-
-            if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.message || 'Failed to create course');
-            }
-
-            const result = await response.json();
-            setCourses([...courses, result.data]);
-            setSuccessMessage('Course created successfully!');
-            setIsModalOpen(false);
-            setFormData({ course_name: '', course_code: '', duration_years: 4, total_semesters: 8 });
-            setTimeout(() => setSuccessMessage(''), 3000);
+            const { error } = await supabase.from('batch_courses').insert({ batch_id: batchId, course_id: selectedCourseId });
+            if (error && error.code !== '23505') throw error;
+            setSuccessMessage('Course linked!');
+            setIsLinkCourseModalOpen(false);
+            window.location.reload();
         } catch (error) {
-            setErrorMessage(error instanceof Error ? error.message : 'An error occurred');
+            setErrorMessage('Failed to link course');
         } finally {
             setSubmitting(false);
         }
     };
 
-    if (loading) {
-        return (
-            <div className="space-y-6">
-                <div className="h-8 bg-white/5 rounded w-48 animate-pulse" />
-                <div className="h-24 bg-white/5 rounded animate-pulse" />
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {[...Array(3)].map((_, i) => (
-                        <div key={i} className="h-40 bg-white/5 rounded-xl animate-pulse" />
-                    ))}
-                </div>
-            </div>
-        );
+
+
+    const handleCreateBranch = async () => {
+        if (!supabase || !batchId || !createBranchData.course_id || !createBranchData.branch_name) return;
+        setSubmitting(true);
+        try {
+            const { data: newBranch, error: bError } = await supabase.from('branches').insert({
+                branch_name: createBranchData.branch_name,
+                branch_code: createBranchData.branch_code,
+                course_id: createBranchData.course_id,
+                is_active: true
+            }).select().single();
+            if (bError) throw bError;
+
+            await supabase.from('batch_branches').insert({
+                batch_id: batchId,
+                branch_id: newBranch.id
+            });
+
+            setSuccessMessage('Branch created & linked!');
+            setIsCreateBranchModalOpen(false);
+            window.location.reload();
+        } catch (error) {
+            setErrorMessage('Failed to create branch');
+        } finally {
+            setSubmitting(false);
+        }
     }
 
-    if (!batch) {
-        return (
-            <div className="text-center py-12">
-                <h2 className="text-xl font-semibold text-text-primary">Batch not found</h2>
-                <button onClick={() => navigate('/batches')} className="mt-4 text-primary hover:underline">
-                    Go back to Batches
-                </button>
-            </div>
-        );
+    const handleCreateClass = async () => {
+        if (!supabase || !batchId || !targetBranchId || !classLabel) return;
+        setSubmitting(true);
+        try {
+            const { error } = await supabase.from('classes').insert({
+                class_label: classLabel,
+                batch_id: batchId,
+                branch_id: targetBranchId,
+                is_active: true,
+                current_strength: 0
+            });
+            if (error) throw error;
+            setSuccessMessage('Class created!');
+            setIsCreateClassModalOpen(false);
+            window.location.reload();
+        } catch (error) {
+            setErrorMessage('Failed to create class');
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
+    // Helpers
+    const openCreateClassModal = (branchId: string, e: React.MouseEvent) => {
+        e.stopPropagation();
+        setTargetBranchId(branchId);
+        // Find branch across all groups
+        let branch: Branch | undefined;
+        Object.values(branchesByCourse).forEach(list => {
+            const found = list.find(b => b.id === branchId);
+            if (found) branch = found;
+        });
+
+        if (branch) {
+            const existingCount = (classesByBranch[branch.id] || []).length;
+            const sectionChar = String.fromCharCode(65 + existingCount); // A, B, C...
+            setClassLabel(`${batch?.batch_year || ''}-${branch.branch_code}-${sectionChar}`);
+        }
+        setIsCreateClassModalOpen(true);
+    };
+
+    const getBranchName = (id: string) => {
+        for (const list of Object.values(branchesByCourse)) {
+            const b = list.find(b => b.id === id);
+            if (b) return b.branch_name;
+        }
+        return '';
     }
+
+    if (loading) return <div className="p-12 text-center text-text-secondary"><Loader2 className="w-8 h-8 animate-spin mx-auto mb-2" />Loading...</div>;
+    if (!batch) return <div className="p-12 text-center">Batch not found</div>;
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-8">
             {/* Messages */}
             {successMessage && (
                 <div className="flex items-center gap-3 p-4 bg-success/10 border border-success/30 rounded-lg text-success">
@@ -193,196 +311,216 @@ export default function BatchDetail() {
                 </div>
             )}
 
-            {/* Breadcrumb */}
-            <nav className="flex items-center gap-2 text-sm">
-                <Link to="/batches" className="text-text-secondary hover:text-primary">Batches</Link>
-                <ChevronRight className="w-4 h-4 text-text-muted" />
-                <span className="text-text-primary font-medium">{batch.batch_name}</span>
-            </nav>
-
-            {/* Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                <div className="flex items-center gap-4">
-                    <button
-                        onClick={() => navigate('/batches')}
-                        className="p-2 text-text-secondary hover:text-text-primary hover:bg-white/5 rounded-lg"
-                    >
-                        <ArrowLeft className="w-5 h-5" />
-                    </button>
-                    <div>
+            {/* Breadcrumb & Header */}
+            <div className="space-y-4">
+                <nav className="flex items-center gap-2 text-sm text-text-secondary">
+                    <Link to="/batches" className="hover:text-primary">Batches</Link>
+                    <ChevronRight className="w-4 h-4" />
+                    <span className="text-text-primary">{batch.batch_name}</span>
+                </nav>
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
                         <h1 className="text-2xl font-bold text-text-primary">{batch.batch_name}</h1>
-                        <p className="text-text-secondary">
-                            Academic Year {batch.start_year} - {batch.end_year}
-                        </p>
+                        <span className="px-3 py-1 bg-white/5 rounded-full text-secondary text-sm">Year {batch.batch_year}</span>
                     </div>
-                </div>
-                <div className="flex gap-3">
-                    <button className="flex items-center gap-2 px-4 py-2 border border-white/10 text-text-secondary rounded-lg hover:bg-white/5">
-                        <Edit className="w-4 h-4" />
-                        Edit
-                    </button>
-                    <button
-                        onClick={() => setIsModalOpen(true)}
-                        className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-secondary to-primary text-white font-semibold rounded-lg"
-                    >
-                        <Plus className="w-4 h-4" />
-                        Add Course
-                    </button>
-                </div>
-            </div>
-
-            {/* Batch Info Card */}
-            <div className="bg-gradient-to-br from-bg-secondary/95 to-bg-tertiary/95 border border-white/10 rounded-xl p-6">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-                    <div>
-                        <p className="text-text-muted text-sm">Status</p>
-                        <span className={`inline-flex items-center px-2 py-1 mt-1 rounded-full text-xs font-medium ${batch.is_active ? 'bg-success/20 text-success' : 'bg-error/20 text-error'
-                            }`}>
-                            {batch.is_active ? 'Active' : 'Inactive'}
-                        </span>
-                    </div>
-                    <div>
-                        <p className="text-text-muted text-sm">Duration</p>
-                        <p className="text-text-primary font-semibold mt-1">{batch.end_year - batch.start_year} Years</p>
-                    </div>
-                    <div>
-                        <p className="text-text-muted text-sm">Courses</p>
-                        <p className="text-text-primary font-semibold mt-1">{courses.length}</p>
-                    </div>
-                    <div>
-                        <p className="text-text-muted text-sm">Start Year</p>
-                        <p className="text-text-primary font-semibold mt-1">{batch.start_year}</p>
-                    </div>
-                </div>
-            </div>
-
-            {/* Courses Section */}
-            <div>
-                <h2 className="text-lg font-semibold text-text-primary mb-4">Courses in this Batch</h2>
-
-                {courses.length === 0 ? (
-                    <div className="bg-gradient-to-br from-bg-secondary/95 to-bg-tertiary/95 border border-white/10 rounded-xl p-12 text-center">
-                        <BookOpen className="w-12 h-12 text-text-muted mx-auto mb-4" />
-                        <h3 className="text-lg font-semibold text-text-primary mb-2">No Courses Added</h3>
-                        <p className="text-text-secondary mb-4">Add courses to this batch</p>
+                    <div className="flex gap-2">
                         <button
-                            onClick={() => setIsModalOpen(true)}
+                            onClick={() => setIsLinkCourseModalOpen(true)}
+                            className="flex items-center gap-2 px-3 py-2 text-sm border border-secondary/30 text-secondary hover:bg-secondary/10 rounded-lg transition-colors"
+                        >
+                            <Link2 className="w-4 h-4" />
+                            Link Course
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            {/* MAIN CONTENT: COURSES ACCORDION */}
+            <div className="space-y-6">
+                {courses.length === 0 ? (
+                    <div className="bg-white/5 border border-white/10 rounded-xl p-12 text-center">
+                        <BookOpen className="w-12 h-12 text-text-muted mx-auto mb-4" />
+                        <h3 className="text-lg font-semibold text-text-primary mb-2">No Courses Linked</h3>
+                        <p className="text-text-secondary mb-6">Link a course to start adding branches and classes.</p>
+                        <button
+                            onClick={() => setIsLinkCourseModalOpen(true)}
                             className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-secondary to-primary text-white rounded-lg"
                         >
-                            <Plus className="w-4 h-4" />
-                            Add Course
+                            <Link2 className="w-4 h-4" />
+                            Link Course
                         </button>
                     </div>
                 ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {courses.map((course) => (
+                    courses.map(course => (
+                        <div key={course.id} className="border border-white/10 rounded-xl overflow-hidden bg-bg-secondary/50">
+                            {/* Accordion Header */}
                             <div
-                                key={course.id}
-                                onClick={() => navigate(`/batches/${batchId}/courses/${course.id}`)}
-                                className="bg-gradient-to-br from-bg-secondary/95 to-bg-tertiary/95 border border-white/10 rounded-xl p-6 cursor-pointer hover:border-primary/50 hover:-translate-y-1 transition-all group"
+                                onClick={() => toggleCourse(course.id)}
+                                className="flex items-center justify-between p-4 bg-white/5 cursor-pointer hover:bg-white/10 transition-colors"
                             >
-                                <div className="flex items-start justify-between mb-3">
-                                    <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center">
-                                        <BookOpen className="w-6 h-6 text-primary" />
+                                <div className="flex items-center gap-3">
+                                    <div className={`p-1 rounded transition-transform duration-200 ${expandedCourses[course.id] ? 'rotate-90' : ''}`}>
+                                        <ChevronRight className="w-5 h-5 text-text-muted" />
                                     </div>
-                                    <span className="text-xs font-mono text-text-muted bg-white/5 px-2 py-1 rounded">
-                                        {course.course_code}
-                                    </span>
-                                </div>
-
-                                <h3 className="text-lg font-semibold text-text-primary mb-2 group-hover:text-primary transition-colors">
-                                    {course.course_name}
-                                </h3>
-
-                                <div className="flex gap-4 text-sm text-text-secondary mb-4">
-                                    <span>{course.duration_years} Years</span>
-                                    <span>{course.total_semesters} Semesters</span>
-                                </div>
-
-                                <div className="flex items-center justify-between pt-4 border-t border-white/10">
-                                    <div className="flex items-center gap-2">
-                                        <Users className="w-4 h-4 text-text-muted" />
-                                        <span className="text-sm text-text-secondary">{course.branch_count || 0} Branches</span>
+                                    <div>
+                                        <h2 className="text-lg font-semibold text-text-primary">{course.course_name}</h2>
+                                        <p className="text-xs text-text-secondary">{course.course_code} • {course.duration_years} Years</p>
                                     </div>
-                                    <ChevronRight className="w-5 h-5 text-text-muted group-hover:text-primary group-hover:translate-x-1 transition-all" />
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); setIsCreateBranchModalOpen(true); setCreateBranchData({ ...createBranchData, course_id: course.id }); }}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-primary/10 text-primary hover:bg-primary/20 rounded-lg transition-colors border border-primary/20"
+                                    >
+                                        <Plus className="w-3 h-3" />
+                                        Add Branch
+                                    </button>
                                 </div>
                             </div>
-                        ))}
-                    </div>
+
+                            {/* Accordion Content */}
+                            {expandedCourses[course.id] && (
+                                <div className="p-4 border-t border-white/10 bg-black/10">
+                                    {(!branchesByCourse[course.id] || branchesByCourse[course.id].length === 0) ? (
+                                        <div className="text-center py-8 text-text-muted text-sm">
+                                            No branches linked to this course in this batch.
+                                        </div>
+                                    ) : (
+                                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                            {branchesByCourse[course.id].map(branch => (
+                                                <div key={branch.id} className="bg-bg-tertiary border border-white/5 rounded-xl p-5 hover:border-white/10 transition-all">
+                                                    <div className="flex items-start justify-between mb-4">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                                                                <GitBranch className="w-4 h-4 text-primary" />
+                                                            </div>
+                                                            <div>
+                                                                <h3 className="font-medium text-text-primary">{branch.branch_name}</h3>
+                                                            </div>
+                                                        </div>
+                                                        <button
+                                                            onClick={(e) => openCreateClassModal(branch.id, e)}
+                                                            className="text-xs bg-white/5 hover:bg-white/10 text-text-secondary hover:text-primary border border-white/10 px-2 py-1 rounded flex items-center gap-1 transition-colors"
+                                                        >
+                                                            <Plus className="w-3 h-3" />
+                                                            Class
+                                                        </button>
+                                                    </div>
+
+                                                    <div className="space-y-2">
+                                                        {(classesByBranch[branch.id] || []).length > 0 ? (
+                                                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                                                                {(classesByBranch[branch.id] || []).map(cls => (
+                                                                    <div
+                                                                        key={cls.id}
+                                                                        onClick={() => navigate(`/classes/${cls.id}`)}
+                                                                        className="bg-black/20 hover:bg-black/40 border border-white/5 rounded p-2 cursor-pointer transition-all flex items-center gap-2 group"
+                                                                    >
+                                                                        <Users className="w-3 h-3 text-text-muted group-hover:text-primary" />
+                                                                        <span className="text-xs font-medium text-text-secondary group-hover:text-text-primary">{cls.class_label}</span>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        ) : (
+                                                            <div className="text-xs text-text-muted italic px-2">No classes yet</div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    ))
                 )}
             </div>
 
-            {/* Add Course Modal */}
-            {isModalOpen && (
+            {/* MODALS */}
+            {/* Link Course Modal */}
+            {isLinkCourseModalOpen && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-bg-secondary border border-white/10 rounded-2xl w-full max-w-md">
-                        <div className="flex items-center justify-between p-6 border-b border-white/10">
-                            <h2 className="text-xl font-bold text-text-primary">Add Course</h2>
-                            <button onClick={() => setIsModalOpen(false)} className="p-2 text-text-secondary hover:text-text-primary">
-                                <X className="w-5 h-5" />
+                    <div className="bg-bg-secondary w-full max-w-md p-6 rounded-xl border border-white/10">
+                        <div className="flex justify-between items-center mb-4">
+                            <h2 className="text-lg font-bold">Link Course</h2>
+                            <button onClick={() => setIsLinkCourseModalOpen(false)}><X className="w-5 h-5 text-text-muted" /></button>
+                        </div>
+                        <select
+                            value={selectedCourseId}
+                            onChange={(e) => setSelectedCourseId(e.target.value)}
+                            className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg mb-4 text-text-primary"
+                        >
+                            <option value="">Select Course...</option>
+                            {allCourses.filter(c => !courses.find(lc => lc.id === c.id)).map(c => (
+                                <option key={c.id} value={c.id}>{c.course_name}</option>
+                            ))}
+                        </select>
+                        <button onClick={handleLinkCourse} disabled={submitting} className="w-full p-2.5 bg-primary text-white rounded-lg disabled:opacity-50">
+                            {submitting ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : 'Link Course'}
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Create Branch Modal */}
+            {isCreateBranchModalOpen && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-bg-secondary w-full max-w-md p-6 rounded-xl border border-white/10">
+                        <div className="flex justify-between items-center mb-4">
+                            <h2 className="text-lg font-bold">Add Branch</h2>
+                            <button onClick={() => setIsCreateBranchModalOpen(false)}><X className="w-5 h-5 text-text-muted" /></button>
+                        </div>
+                        <div className="space-y-4">
+                            <select
+                                value={createBranchData.course_id}
+                                onChange={(e) => setCreateBranchData({ ...createBranchData, course_id: e.target.value })}
+                                className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-text-primary"
+                            >
+                                <option value="">Select Parent Course...</option>
+                                {courses.map(c => (
+                                    <option key={c.id} value={c.id}>{c.course_name}</option>
+                                ))}
+                            </select>
+                            <input
+                                placeholder="Branch Name (e.g. Robotics)"
+                                value={createBranchData.branch_name}
+                                onChange={(e) => setCreateBranchData({ ...createBranchData, branch_name: e.target.value })}
+                                className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-text-primary"
+                            />
+                            <input
+                                placeholder="Branch Code (e.g. ROBO)"
+                                value={createBranchData.branch_code}
+                                onChange={(e) => setCreateBranchData({ ...createBranchData, branch_code: e.target.value.toUpperCase() })}
+                                className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-text-primary"
+                            />
+                            <button onClick={handleCreateBranch} disabled={submitting} className="w-full p-2.5 bg-primary text-white rounded-lg disabled:opacity-50">
+                                {submitting ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : 'Create & Link'}
                             </button>
                         </div>
+                    </div>
+                </div>
+            )}
 
-                        <form onSubmit={handleSubmit} className="p-6 space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-text-secondary mb-1">Course Name</label>
-                                <input
-                                    type="text"
-                                    value={formData.course_name}
-                                    onChange={(e) => setFormData({ ...formData, course_name: e.target.value })}
-                                    className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-text-primary focus:outline-none focus:border-primary"
-                                    placeholder="B.Tech Computer Science"
-                                    required
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-medium text-text-secondary mb-1">Course Code</label>
-                                <input
-                                    type="text"
-                                    value={formData.course_code}
-                                    onChange={(e) => setFormData({ ...formData, course_code: e.target.value.toUpperCase() })}
-                                    className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-text-primary focus:outline-none focus:border-primary font-mono"
-                                    placeholder="BTCS"
-                                    required
-                                />
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-text-secondary mb-1">Duration (Years)</label>
-                                    <input
-                                        type="number"
-                                        value={formData.duration_years}
-                                        onChange={(e) => setFormData({ ...formData, duration_years: parseInt(e.target.value) })}
-                                        className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-text-primary focus:outline-none focus:border-primary"
-                                        min="1"
-                                        max="6"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-text-secondary mb-1">Total Semesters</label>
-                                    <input
-                                        type="number"
-                                        value={formData.total_semesters}
-                                        onChange={(e) => setFormData({ ...formData, total_semesters: parseInt(e.target.value) })}
-                                        className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-text-primary focus:outline-none focus:border-primary"
-                                        min="1"
-                                        max="12"
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="flex gap-3 pt-4">
-                                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 px-4 py-2.5 border border-white/10 text-text-secondary rounded-lg hover:bg-white/5">
-                                    Cancel
-                                </button>
-                                <button type="submit" disabled={submitting} className="flex-1 px-4 py-2.5 bg-gradient-to-r from-secondary to-primary text-white font-semibold rounded-lg disabled:opacity-50 flex items-center justify-center gap-2">
-                                    {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
-                                    Add Course
-                                </button>
-                            </div>
-                        </form>
+            {/* Create Class Modal */}
+            {isCreateClassModalOpen && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-bg-secondary w-full max-w-md p-6 rounded-xl border border-white/10">
+                        <div className="flex justify-between items-center mb-4">
+                            <h2 className="text-lg font-bold">Add Class</h2>
+                            <button onClick={() => setIsCreateClassModalOpen(false)}><X className="w-5 h-5 text-text-muted" /></button>
+                        </div>
+                        <div className="mb-4 text-sm text-text-secondary">
+                            Adding class to: <span className="text-primary font-medium">{getBranchName(targetBranchId)}</span>
+                        </div>
+                        <input
+                            placeholder="Class Label (e.g. 2024-CSE-A)"
+                            value={classLabel}
+                            onChange={(e) => setClassLabel(e.target.value)}
+                            className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg mb-4 text-text-primary"
+                        />
+                        <button onClick={handleCreateClass} disabled={submitting} className="w-full p-2.5 bg-primary text-white rounded-lg disabled:opacity-50">
+                            {submitting ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : 'Create Class'}
+                        </button>
                     </div>
                 </div>
             )}

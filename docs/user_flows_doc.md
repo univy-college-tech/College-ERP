@@ -17,40 +17,63 @@
 
 ### Flow 1: Create Complete Academic Structure (Critical Path)
 
-**Goal**: Set up a new class from scratch
+**Goal**: Set up a new batch with courses, branches, and classes
 
 **Steps**:
 1. Login to Admin Portal
-2. Navigate to Batches
-3. Click "Create Batch" → Enter "2024-2028" → Save
-4. Click batch card → Opens Batch Detail
-5. Click "Add Course" → Select "B.Tech" → Save
-6. Click "B.Tech" card → Opens Course Detail
-7. View list of branches (CSE, ECE, IT already created)
-8. Click "CSE" → Opens Sections Page
-9. View sections (A, B, C already created)
-10. Click "Section A" → Opens **Class Management Page**
+2. Navigate to **Batches** from sidebar
+3. Click **"Create Batch"** → Enter "2024-2028" → Save
+4. Click batch card → Opens **Batch Detail Page**
+
+**Now on Batch Detail Page (Accordion UI)**:
+
+The page displays courses as collapsible accordion sections. Each course expands to show its branches and classes.
+
+**Step 5 - Link Courses to Batch**:
+5. Click **"Link Course"** button (top right)
+6. Modal appears → Select "B.Tech" from dropdown → Click **"Link Course"**
+7. B.Tech accordion section appears on the page
+8. Repeat to link more courses (MBA, M.Tech, etc.)
+
+**Step 6 - Add Branches under Courses**:
+9. Click **"Add Branch"** button on the B.Tech accordion header
+10. Modal appears:
+    - Select Parent Course: "B.Tech" (pre-selected)
+    - Branch Name: "Computer Science"
+    - Branch Code: "CSE"
+11. Click **"Create & Link"**
+12. CSE branch card appears inside B.Tech accordion
+13. Repeat for ECE, IT, MECH branches
+
+**Step 7 - Create Classes (Sections) for Each Branch**:
+14. On CSE branch card, click **"+ Class"** button
+15. Modal appears:
+    - Branch: CSE (shown)
+    - Class Label: Auto-suggested "2024-CSE-A"
+16. Click **"Create Class"**
+17. Class "2024-CSE-A" appears inside CSE branch card
+18. Click "2024-CSE-A" → Opens **Class Management Page**
 
 **Now on Class Management Page**:
 
 **Tab 1 - Assign Students**:
-11. Click "Add Students" dropdown
-12. Select "Choose from Registered Students"
-13. Opens modal with all registered students
-14. Filter by "Admission Year: 2024"
-15. Select students (bulk select checkboxes)
-16. Click "Assign to Class" → Students now in class
+19. Click "Add Students" dropdown
+20. Select "Choose from Registered Students"
+21. Opens modal with all registered students
+22. Filter by "Admission Year: 2024"
+23. Select students (bulk select checkboxes)
+24. Click "Assign to Class" → Students now in class
 
 **Tab 2 - Add Subjects**:
-17. Click "Add Subject" button
-18. Enter: Name="Data Structures", Code="CS301", Semester=3
-19. Professor dropdown → Search "Sharma" → Select "Prof. Sharma"
-20. Click "Save"
-21. Repeat for all subjects (DBMS, OS, COA, etc.)
-22. System auto-creates groups for each subject-class combo
+25. Click "Add Subject" button
+26. Enter: Name="Data Structures", Code="CS301", Semester=3
+27. Professor dropdown → Search "Sharma" → Select "Prof. Sharma"
+28. Click "Save"
+29. Repeat for all subjects (DBMS, OS, COA, etc.)
+30. System auto-creates groups for each subject-class combo
 
 **Tab 3 - Upload Timetable**:
-23. Two options:
+31. Two options:
     - **Option A**: Drag-drop image file → Upload to Supabase Storage → Save URL
     - **Option B**: Click "Create Structured Timetable"
       - Grid appears: Days (Mon-Sat) × Periods (1-8)
@@ -59,16 +82,16 @@
       - Click "Save Timetable"
 
 **Tab 4 - Assign CR**:
-24. Dropdown shows all students in class
-25. Search "Rahul" → Select
-26. Click "Assign as CR"
-27. Badge "CR" appears next to student name in list
+32. Dropdown shows all students in class
+33. Search "Rahul" → Select
+34. Click "Assign as CR"
+35. Badge "CR" appears next to student name in list
 
 **Tab 5 - Assign Class In-Charge**:
-28. Dropdown shows all professors
-29. Search "Sharma" → Select
-30. Click "Assign as In-Charge"
-31. Success toast: "Class in-charge assigned successfully"
+36. Dropdown shows all professors
+37. Search "Sharma" → Select
+38. Click "Assign as In-Charge"
+39. Success toast: "Class in-charge assigned successfully"
 
 **Result**: Class 2024-CSE-A is now fully operational
 

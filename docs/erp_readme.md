@@ -41,7 +41,13 @@ A complete college ERP solution with three specialized portals:
 
 ### Admin Portal
 - Manage professors and students database
-- Create academic structure (Batch → Course → Branch → Section → Class)
+- Create academic structure:
+  - **Batches**: Create and manage academic batches (e.g., 2024-2028)
+  - **Batch Detail Page** (Accordion UI):
+    - Link Courses to Batches
+    - Each Course expands to show Branches
+    - Add/Create Branches under Courses
+    - Add Classes to Branches with auto-suggested labels
 - Assign students to classes
 - Link professors to subjects
 - Upload/create timetables

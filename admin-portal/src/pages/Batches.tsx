@@ -57,29 +57,61 @@ export default function Batches() {
     const [successMessage, setSuccessMessage] = useState('');
     const [errorMessage, setErrorMessage] = useState('');
 
-    // Fetch batches
+    // Fetch batches with stats
     useEffect(() => {
         const fetchBatches = async () => {
             if (!supabase) {
-                // Mock data
-                setBatches([
-                    { id: '1', batch_name: '2024-2028', batch_year: 2024, is_active: true, student_count: 320, course_count: 3 },
-                    { id: '2', batch_name: '2023-2027', batch_year: 2023, is_active: true, student_count: 340, course_count: 3 },
-                    { id: '3', batch_name: '2022-2026', batch_year: 2022, is_active: true, student_count: 310, course_count: 3 },
-                    { id: '4', batch_name: '2021-2025', batch_year: 2021, is_active: false, student_count: 300, course_count: 3 },
-                ]);
                 setLoading(false);
                 return;
             }
 
             try {
-                const { data, error } = await supabase
+                // Fetch batches
+                const { data: batchesData, error } = await supabase
                     .from('batches')
                     .select('*')
                     .order('batch_year', { ascending: false });
 
                 if (error) throw error;
-                setBatches(data || []);
+
+                // Get course count and student count for each batch
+                const batchesWithStats = await Promise.all(
+                    (batchesData || []).map(async (batch) => {
+                        // Count courses linked to this batch
+                        const { count: courseCount } = await supabase
+                            .from('batch_courses')
+                            .select('id', { count: 'exact', head: true })
+                            .eq('batch_id', batch.id)
+                            .eq('is_active', true);
+
+                        // Get classes for this batch first
+                        const { data: classesData } = await supabase
+                            .from('classes')
+                            .select('id')
+                            .eq('batch_id', batch.id);
+
+                        const classIds = (classesData || []).map(c => c.id);
+
+                        // Count students in those classes
+                        let studentCount = 0;
+                        if (classIds.length > 0) {
+                            const { count } = await supabase
+                                .from('class_students')
+                                .select('id', { count: 'exact', head: true })
+                                .eq('is_active', true)
+                                .in('class_id', classIds);
+                            studentCount = count || 0;
+                        }
+
+                        return {
+                            ...batch,
+                            course_count: courseCount || 0,
+                            student_count: studentCount
+                        };
+                    })
+                );
+
+                setBatches(batchesWithStats);
             } catch (error) {
                 console.error('Error fetching batches:', error);
                 setErrorMessage('Failed to load batches');

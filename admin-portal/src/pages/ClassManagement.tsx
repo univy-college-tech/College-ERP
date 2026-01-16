@@ -21,7 +21,7 @@ import {
     Trash2,
     Search,
     GraduationCap,
-    Calendar,
+    ArrowRightLeft,
 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 
@@ -41,19 +41,22 @@ const supabase = supabaseUrl && supabaseAnonKey
 
 interface ClassInfo {
     id: string;
-    class_name: string;
-    section: string;
-    current_semester: number;
+    class_label: string;
     batch_id: string;
     batch_name: string;
+    batch_year?: number;
     branch_id: string;
     branch_name: string;
     branch_code: string;
     course_id?: string;
-    class_incharge_id?: string;
+    course_name?: string;
+    course_code?: string;
+    current_strength: number;
+    class_teacher_id?: string;
     class_incharge_name?: string;
     class_representative_id?: string;
     class_representative_name?: string;
+    is_active: boolean;
 }
 
 interface Student {
@@ -62,15 +65,6 @@ interface Student {
     full_name: string;
     email: string;
     is_active: boolean;
-}
-
-interface Subject {
-    id: string;
-    subject_name: string;
-    subject_code: string;
-    credits: number;
-    professor_name?: string;
-    semester: number;
 }
 
 interface TimetableEntry {
@@ -95,23 +89,222 @@ interface Professor {
 // Tab Components
 // ============================================
 
-// Students Tab
+// Students Tab with Transfer/Edit/Delete functionality
 function StudentsTab({ classId, className: _className }: { classId: string; className: string }) {
     const [students, setStudents] = useState<Student[]>([]);
+    const [allStudents, setAllStudents] = useState<Student[]>([]);
+    const [allClasses, setAllClasses] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
+    const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+    const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
+    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+    const [selectedStudent, setSelectedStudent] = useState('');
+    const [transferStudent, setTransferStudent] = useState<Student | null>(null);
+    const [editingStudent, setEditingStudent] = useState<Student | null>(null);
+    const [editForm, setEditForm] = useState({
+        full_name: '',
+        phone: '',
+        enrollment_number: '',
+        admission_year: '',
+        gender: '',
+        date_of_birth: '',
+    });
+    const [selectedClass, setSelectedClass] = useState('');
+    const [transferReason, setTransferReason] = useState('');
+    const [submitting, setSubmitting] = useState(false);
+
+    // Fetch students in this class
+    const fetchStudents = async () => {
+        try {
+            const response = await fetch(`http://localhost:4003/api/admin/v1/academic/classes/${classId}/students`);
+            if (response.ok) {
+                const result = await response.json();
+                setStudents(result.data || []);
+            }
+        } catch (error) {
+            console.error('Error fetching students:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
 
     useEffect(() => {
-        // Mock data
-        setStudents([
-            { id: '1', roll_number: '2024CSE001', full_name: 'Rahul Singh', email: 'rahul@college.edu', is_active: true },
-            { id: '2', roll_number: '2024CSE002', full_name: 'Priya Sharma', email: 'priya@college.edu', is_active: true },
-            { id: '3', roll_number: '2024CSE003', full_name: 'Amit Kumar', email: 'amit@college.edu', is_active: true },
-            { id: '4', roll_number: '2024CSE004', full_name: 'Neha Gupta', email: 'neha@college.edu', is_active: true },
-            { id: '5', roll_number: '2024CSE005', full_name: 'Vikram Reddy', email: 'vikram@college.edu', is_active: false },
-        ]);
-        setLoading(false);
+        fetchStudents();
     }, [classId]);
+
+    // Fetch all students when add modal opens
+    useEffect(() => {
+        if (isAddModalOpen) {
+            const fetchAllStudents = async () => {
+                try {
+                    const response = await fetch('http://localhost:4003/api/admin/v1/students');
+                    if (response.ok) {
+                        const result = await response.json();
+                        setAllStudents(result.data || []);
+                    }
+                } catch (error) {
+                    console.error('Error fetching all students:', error);
+                }
+            };
+            fetchAllStudents();
+        }
+    }, [isAddModalOpen]);
+
+    // Fetch all classes when transfer modal opens
+    useEffect(() => {
+        if (isTransferModalOpen) {
+            const fetchClasses = async () => {
+                try {
+                    const response = await fetch('http://localhost:4003/api/admin/v1/academic/classes');
+                    if (response.ok) {
+                        const result = await response.json();
+                        // Filter out current class
+                        setAllClasses((result.data || []).filter((c: any) => c.id !== classId));
+                    }
+                } catch (error) {
+                    console.error('Error fetching classes:', error);
+                }
+            };
+            fetchClasses();
+        }
+    }, [isTransferModalOpen, classId]);
+
+    const handleAddStudent = async () => {
+        if (!selectedStudent) return;
+        setSubmitting(true);
+        try {
+            const response = await fetch(`http://localhost:4003/api/admin/v1/academic/classes/${classId}/students`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ student_id: selectedStudent }),
+            });
+            if (response.ok) {
+                await fetchStudents();
+                setIsAddModalOpen(false);
+                setSelectedStudent('');
+            }
+        } catch (error) {
+            console.error('Error adding student:', error);
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
+    const handleTransferStudent = async () => {
+        if (!transferStudent || !selectedClass) return;
+        setSubmitting(true);
+        try {
+            const response = await fetch(`http://localhost:4003/api/admin/v1/academic/students/${transferStudent.id}/transfer`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    from_class_id: classId,
+                    to_class_id: selectedClass,
+                    reason: transferReason || null,
+                }),
+            });
+            if (response.ok) {
+                await fetchStudents();
+                setIsTransferModalOpen(false);
+                setTransferStudent(null);
+                setSelectedClass('');
+                setTransferReason('');
+            }
+        } catch (error) {
+            console.error('Error transferring student:', error);
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
+    const handleRemoveStudent = async (student: Student) => {
+        if (!confirm(`Remove ${student.full_name} from this class?`)) return;
+        try {
+            const response = await fetch(`http://localhost:4003/api/admin/v1/academic/classes/${classId}/students/${student.id}`, {
+                method: 'DELETE',
+            });
+            if (response.ok) {
+                await fetchStudents();
+            }
+        } catch (error) {
+            console.error('Error removing student:', error);
+        }
+    };
+
+    const openTransferModal = (student: Student) => {
+        setTransferStudent(student);
+        setSelectedClass('');
+        setTransferReason('');
+        setIsTransferModalOpen(true);
+    };
+
+    const openEditModal = async (student: Student) => {
+        setEditingStudent(student);
+        // Fetch full student details
+        try {
+            const response = await fetch(`http://localhost:4003/api/admin/v1/students/${student.id}`);
+            if (response.ok) {
+                const result = await response.json();
+                const data = result.data;
+                setEditForm({
+                    full_name: data.full_name || student.full_name,
+                    phone: data.phone || '',
+                    enrollment_number: data.enrollment_number || '',
+                    admission_year: data.admission_year?.toString() || '',
+                    gender: data.gender || '',
+                    date_of_birth: data.date_of_birth || '',
+                });
+            } else {
+                setEditForm({
+                    full_name: student.full_name,
+                    phone: '',
+                    enrollment_number: '',
+                    admission_year: '',
+                    gender: '',
+                    date_of_birth: '',
+                });
+            }
+        } catch {
+            setEditForm({
+                full_name: student.full_name,
+                phone: '',
+                enrollment_number: '',
+                admission_year: '',
+                gender: '',
+                date_of_birth: '',
+            });
+        }
+        setIsEditModalOpen(true);
+    };
+
+    const handleEditStudent = async () => {
+        if (!editingStudent) return;
+        setSubmitting(true);
+        try {
+            const response = await fetch(`http://localhost:4003/api/admin/v1/students/${editingStudent.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    full_name: editForm.full_name,
+                    phone: editForm.phone || null,
+                    enrollment_number: editForm.enrollment_number || null,
+                    admission_year: editForm.admission_year ? parseInt(editForm.admission_year) : null,
+                    gender: editForm.gender || null,
+                    date_of_birth: editForm.date_of_birth || null,
+                }),
+            });
+            if (response.ok) {
+                await fetchStudents();
+                setIsEditModalOpen(false);
+                setEditingStudent(null);
+            }
+        } catch (error) {
+            console.error('Error updating student:', error);
+        } finally {
+            setSubmitting(false);
+        }
+    };
 
     const filteredStudents = students.filter(
         (s) =>
@@ -132,7 +325,10 @@ function StudentsTab({ classId, className: _className }: { classId: string; clas
                         className="w-full pl-10 pr-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-text-primary focus:outline-none focus:border-primary"
                     />
                 </div>
-                <button className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-accent-teal to-primary text-white font-semibold rounded-lg">
+                <button
+                    onClick={() => setIsAddModalOpen(true)}
+                    className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-accent-teal to-primary text-white font-semibold rounded-lg"
+                >
                     <Plus className="w-4 h-4" />
                     Add Student
                 </button>
@@ -187,10 +383,25 @@ function StudentsTab({ classId, className: _className }: { classId: string; clas
                                     </td>
                                     <td className="p-4">
                                         <div className="flex justify-end gap-2">
-                                            <button className="p-2 text-text-secondary hover:text-primary hover:bg-primary/10 rounded-lg">
+                                            <button
+                                                onClick={() => openEditModal(student)}
+                                                className="p-2 text-text-secondary hover:text-primary hover:bg-primary/10 rounded-lg"
+                                                title="Edit student"
+                                            >
                                                 <Edit className="w-4 h-4" />
                                             </button>
-                                            <button className="p-2 text-text-secondary hover:text-error hover:bg-error/10 rounded-lg">
+                                            <button
+                                                onClick={() => openTransferModal(student)}
+                                                className="p-2 text-text-secondary hover:text-secondary hover:bg-secondary/10 rounded-lg"
+                                                title="Transfer to another class"
+                                            >
+                                                <ArrowRightLeft className="w-4 h-4" />
+                                            </button>
+                                            <button
+                                                onClick={() => handleRemoveStudent(student)}
+                                                className="p-2 text-text-secondary hover:text-error hover:bg-error/10 rounded-lg"
+                                                title="Remove from class"
+                                            >
                                                 <Trash2 className="w-4 h-4" />
                                             </button>
                                         </div>
@@ -201,82 +412,567 @@ function StudentsTab({ classId, className: _className }: { classId: string; clas
                     </tbody>
                 </table>
             </div>
+
+            {/* Add Student Modal */}
+            {isAddModalOpen && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-bg-secondary border border-white/10 rounded-2xl w-full max-w-md">
+                        <div className="flex items-center justify-between p-6 border-b border-white/10">
+                            <h2 className="text-xl font-bold text-text-primary">Add Student to Class</h2>
+                            <button onClick={() => setIsAddModalOpen(false)} className="p-2 text-text-secondary hover:text-text-primary">
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-text-secondary mb-1">Select Student</label>
+                                <select
+                                    value={selectedStudent}
+                                    onChange={(e) => setSelectedStudent(e.target.value)}
+                                    className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-text-primary focus:outline-none focus:border-primary"
+                                >
+                                    <option value="">Select a student...</option>
+                                    {allStudents.map((s) => (
+                                        <option key={s.id} value={s.id}>{s.roll_number} - {s.full_name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="flex gap-3 pt-4">
+                                <button
+                                    type="button"
+                                    onClick={() => setIsAddModalOpen(false)}
+                                    className="flex-1 px-4 py-2.5 border border-white/10 text-text-secondary rounded-lg hover:bg-white/5"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={handleAddStudent}
+                                    disabled={submitting || !selectedStudent}
+                                    className="flex-1 px-4 py-2.5 bg-gradient-to-r from-accent-teal to-primary text-white font-semibold rounded-lg disabled:opacity-50 flex items-center justify-center gap-2"
+                                >
+                                    {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
+                                    Add Student
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Transfer Student Modal */}
+            {isTransferModalOpen && transferStudent && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-bg-secondary border border-white/10 rounded-2xl w-full max-w-md">
+                        <div className="flex items-center justify-between p-6 border-b border-white/10">
+                            <div>
+                                <h2 className="text-xl font-bold text-text-primary">Transfer Student</h2>
+                                <p className="text-sm text-text-secondary mt-1">
+                                    {transferStudent.full_name} ({transferStudent.roll_number})
+                                </p>
+                            </div>
+                            <button onClick={() => setIsTransferModalOpen(false)} className="p-2 text-text-secondary hover:text-text-primary">
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-text-secondary mb-1">Transfer to Class *</label>
+                                <select
+                                    value={selectedClass}
+                                    onChange={(e) => setSelectedClass(e.target.value)}
+                                    className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-text-primary focus:outline-none focus:border-primary"
+                                >
+                                    <option value="">Select a class...</option>
+                                    {allClasses.map((c) => (
+                                        <option key={c.id} value={c.id}>
+                                            {c.class_label} - {c.branches?.branch_name || ''} ({c.batches?.batch_year || ''})
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-text-secondary mb-1">Reason (optional)</label>
+                                <textarea
+                                    value={transferReason}
+                                    onChange={(e) => setTransferReason(e.target.value)}
+                                    rows={2}
+                                    className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-text-primary focus:outline-none focus:border-primary resize-none"
+                                    placeholder="e.g., Section change..."
+                                />
+                            </div>
+                            <div className="flex gap-3 pt-4">
+                                <button
+                                    type="button"
+                                    onClick={() => setIsTransferModalOpen(false)}
+                                    className="flex-1 px-4 py-2.5 border border-white/10 text-text-secondary rounded-lg hover:bg-white/5"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={handleTransferStudent}
+                                    disabled={submitting || !selectedClass}
+                                    className="flex-1 px-4 py-2.5 bg-gradient-to-r from-secondary to-primary text-white font-semibold rounded-lg disabled:opacity-50 flex items-center justify-center gap-2"
+                                >
+                                    {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
+                                    Transfer
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Edit Student Modal */}
+            {isEditModalOpen && editingStudent && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+                    <div className="bg-bg-secondary border border-white/10 rounded-2xl w-full max-w-lg my-8">
+                        <div className="flex items-center justify-between p-6 border-b border-white/10">
+                            <div>
+                                <h2 className="text-xl font-bold text-text-primary">Edit Student</h2>
+                                <p className="text-sm text-text-secondary mt-1">
+                                    {editingStudent.roll_number} • {editingStudent.email}
+                                </p>
+                            </div>
+                            <button onClick={() => setIsEditModalOpen(false)} className="p-2 text-text-secondary hover:text-text-primary">
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            {/* Roll Number & Email (Read-only) */}
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-text-secondary mb-1">Roll Number</label>
+                                    <input
+                                        type="text"
+                                        value={editingStudent.roll_number}
+                                        disabled
+                                        className="w-full px-4 py-2.5 bg-white/10 border border-white/10 rounded-lg text-text-muted cursor-not-allowed"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-text-secondary mb-1">Email</label>
+                                    <input
+                                        type="email"
+                                        value={editingStudent.email}
+                                        disabled
+                                        className="w-full px-4 py-2.5 bg-white/10 border border-white/10 rounded-lg text-text-muted cursor-not-allowed"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Full Name */}
+                            <div>
+                                <label className="block text-sm font-medium text-text-secondary mb-1">Full Name *</label>
+                                <input
+                                    type="text"
+                                    value={editForm.full_name}
+                                    onChange={(e) => setEditForm({ ...editForm, full_name: e.target.value })}
+                                    className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-text-primary focus:outline-none focus:border-primary"
+                                    placeholder="Student name"
+                                />
+                            </div>
+
+                            {/* Phone & Enrollment Number */}
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-text-secondary mb-1">Phone</label>
+                                    <input
+                                        type="tel"
+                                        value={editForm.phone}
+                                        onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                                        className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-text-primary focus:outline-none focus:border-primary"
+                                        placeholder="+91 9876543210"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-text-secondary mb-1">Enrollment Number</label>
+                                    <input
+                                        type="text"
+                                        value={editForm.enrollment_number}
+                                        onChange={(e) => setEditForm({ ...editForm, enrollment_number: e.target.value })}
+                                        className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-text-primary focus:outline-none focus:border-primary"
+                                        placeholder="EN2024001"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Admission Year & Gender */}
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-text-secondary mb-1">Admission Year</label>
+                                    <input
+                                        type="number"
+                                        value={editForm.admission_year}
+                                        onChange={(e) => setEditForm({ ...editForm, admission_year: e.target.value })}
+                                        className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-text-primary focus:outline-none focus:border-primary"
+                                        placeholder="2024"
+                                        min="2000"
+                                        max="2100"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-text-secondary mb-1">Gender</label>
+                                    <select
+                                        value={editForm.gender}
+                                        onChange={(e) => setEditForm({ ...editForm, gender: e.target.value })}
+                                        className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-text-primary focus:outline-none focus:border-primary"
+                                    >
+                                        <option value="">Select Gender</option>
+                                        <option value="male">Male</option>
+                                        <option value="female">Female</option>
+                                        <option value="other">Other</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            {/* Date of Birth */}
+                            <div>
+                                <label className="block text-sm font-medium text-text-secondary mb-1">Date of Birth</label>
+                                <input
+                                    type="date"
+                                    value={editForm.date_of_birth}
+                                    onChange={(e) => setEditForm({ ...editForm, date_of_birth: e.target.value })}
+                                    className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-text-primary focus:outline-none focus:border-primary"
+                                />
+                            </div>
+
+                            {/* Actions */}
+                            <div className="flex gap-3 pt-4">
+                                <button
+                                    type="button"
+                                    onClick={() => setIsEditModalOpen(false)}
+                                    className="flex-1 px-4 py-2.5 border border-white/10 text-text-secondary rounded-lg hover:bg-white/5"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={handleEditStudent}
+                                    disabled={submitting || !editForm.full_name.trim()}
+                                    className="flex-1 px-4 py-2.5 bg-gradient-to-r from-accent-teal to-primary text-white font-semibold rounded-lg disabled:opacity-50 flex items-center justify-center gap-2"
+                                >
+                                    {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
+                                    Save Changes
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
 
-// Subjects Tab
+// Subjects Tab with Professor Assignment
 function SubjectsTab({ classId, semester }: { classId: string; semester: number }) {
-    const [subjects, setSubjects] = useState<Subject[]>([]);
+    const [subjects, setSubjects] = useState<any[]>([]);
+    const [allSubjects, setAllSubjects] = useState<any[]>([]);
+    const [allProfessors, setAllProfessors] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
-    const [, setIsModalOpen] = useState(false);
+    const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+    const [isProfessorModalOpen, setIsProfessorModalOpen] = useState(false);
+    const [selectedSubject, setSelectedSubject] = useState('');
+    const [selectedClassSubject, setSelectedClassSubject] = useState<any>(null);
+    const [selectedProfessor, setSelectedProfessor] = useState('');
+    const [submitting, setSubmitting] = useState(false);
+
+    // Fetch class subjects
+    const fetchSubjects = async () => {
+        try {
+            const response = await fetch(`http://localhost:4003/api/admin/v1/academic/classes/${classId}/subjects`);
+            if (response.ok) {
+                const result = await response.json();
+                setSubjects(result.data || []);
+            }
+        } catch (error) {
+            console.error('Error fetching subjects:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
 
     useEffect(() => {
-        // Mock data
-        setSubjects([
-            { id: '1', subject_name: 'Data Structures', subject_code: 'CS201', credits: 4, professor_name: 'Dr. John Smith', semester: 1 },
-            { id: '2', subject_name: 'Database Systems', subject_code: 'CS202', credits: 4, professor_name: 'Dr. Sarah Johnson', semester: 1 },
-            { id: '3', subject_name: 'Operating Systems', subject_code: 'CS203', credits: 3, professor_name: 'Dr. Mike Brown', semester: 1 },
-            { id: '4', subject_name: 'Computer Networks', subject_code: 'CS204', credits: 3, professor_name: 'Dr. Emily Davis', semester: 1 },
-            { id: '5', subject_name: 'Software Engineering', subject_code: 'CS205', credits: 3, professor_name: 'Dr. Robert Wilson', semester: 1 },
-        ]);
-        setLoading(false);
+        fetchSubjects();
     }, [classId, semester]);
+
+    // Fetch all subjects when add modal opens
+    useEffect(() => {
+        if (isAddModalOpen) {
+            const fetchAllSubjects = async () => {
+                try {
+                    const response = await fetch('http://localhost:4003/api/admin/v1/academic/subjects');
+                    if (response.ok) {
+                        const result = await response.json();
+                        setAllSubjects(result.data || []);
+                    }
+                } catch (error) {
+                    console.error('Error fetching all subjects:', error);
+                }
+            };
+            fetchAllSubjects();
+        }
+    }, [isAddModalOpen]);
+
+    // Fetch all professors when professor modal opens
+    useEffect(() => {
+        if (isProfessorModalOpen) {
+            const fetchProfessors = async () => {
+                try {
+                    const response = await fetch('http://localhost:4003/api/admin/v1/professors');
+                    if (response.ok) {
+                        const result = await response.json();
+                        setAllProfessors(result.data || []);
+                    }
+                } catch (error) {
+                    console.error('Error fetching professors:', error);
+                }
+            };
+            fetchProfessors();
+        }
+    }, [isProfessorModalOpen]);
+
+    const handleAssignSubject = async () => {
+        if (!selectedSubject) return;
+        setSubmitting(true);
+        try {
+            const response = await fetch(`http://localhost:4003/api/admin/v1/academic/classes/${classId}/subjects`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ subject_id: selectedSubject }),
+            });
+            if (response.ok) {
+                await fetchSubjects();
+                setIsAddModalOpen(false);
+                setSelectedSubject('');
+            }
+        } catch (error) {
+            console.error('Error assigning subject:', error);
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
+    const handleAssignProfessor = async () => {
+        if (!selectedClassSubject) return;
+        setSubmitting(true);
+        try {
+            const response = await fetch(`http://localhost:4003/api/admin/v1/academic/classes/${classId}/subjects/${selectedClassSubject.subject_id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ professor_id: selectedProfessor || null }),
+            });
+            if (response.ok) {
+                await fetchSubjects();
+                setIsProfessorModalOpen(false);
+                setSelectedClassSubject(null);
+                setSelectedProfessor('');
+            }
+        } catch (error) {
+            console.error('Error assigning professor:', error);
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
+    const openProfessorModal = (subject: any) => {
+        setSelectedClassSubject(subject);
+        setSelectedProfessor(subject.professor_id || '');
+        setIsProfessorModalOpen(true);
+    };
 
     return (
         <div className="space-y-4">
             <div className="flex justify-between items-center">
                 <p className="text-text-secondary">
-                    Semester {semester} • {subjects.length} subjects • {subjects.reduce((acc, s) => acc + s.credits, 0)} credits
+                    Semester {semester} • {subjects.length} subjects • {subjects.reduce((acc, s) => acc + (s.credits || 0), 0)} credits
                 </p>
                 <button
-                    onClick={() => setIsModalOpen(true)}
+                    onClick={() => setIsAddModalOpen(true)}
                     className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-secondary to-primary text-white font-semibold rounded-lg"
                 >
                     <Plus className="w-4 h-4" />
-                    Assign Subject
+                    Add Subject
                 </button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {/* Subjects Table */}
+            <div className="bg-gradient-to-br from-bg-secondary/95 to-bg-tertiary/95 border border-white/10 rounded-xl overflow-hidden">
                 {loading ? (
-                    [...Array(6)].map((_, i) => (
-                        <div key={i} className="h-32 bg-white/5 rounded-xl animate-pulse" />
-                    ))
+                    <div className="p-8 text-center">
+                        <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto" />
+                    </div>
                 ) : subjects.length === 0 ? (
-                    <div className="col-span-full bg-gradient-to-br from-bg-secondary/95 to-bg-tertiary/95 border border-white/10 rounded-xl p-12 text-center">
+                    <div className="p-12 text-center">
                         <BookOpen className="w-12 h-12 text-text-muted mx-auto mb-4" />
                         <h3 className="text-lg font-semibold text-text-primary mb-2">No Subjects Assigned</h3>
-                        <p className="text-text-secondary">Assign subjects for this semester</p>
+                        <p className="text-text-secondary mb-4">Add subjects to this class and assign professors</p>
+                        <button
+                            onClick={() => setIsAddModalOpen(true)}
+                            className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-secondary to-primary text-white font-semibold rounded-lg"
+                        >
+                            <Plus className="w-4 h-4" />
+                            Add Subject
+                        </button>
                     </div>
                 ) : (
-                    subjects.map((subject) => (
-                        <div
-                            key={subject.id}
-                            className="bg-gradient-to-br from-bg-secondary/95 to-bg-tertiary/95 border border-white/10 rounded-xl p-5 hover:border-primary/50 transition-colors"
-                        >
-                            <div className="flex items-start justify-between mb-3">
-                                <span className="text-xs font-mono text-primary bg-primary/10 px-2 py-1 rounded">
-                                    {subject.subject_code}
-                                </span>
-                                <span className="text-xs text-text-muted">{subject.credits} Credits</span>
+                    <table className="w-full">
+                        <thead>
+                            <tr className="border-b border-white/10">
+                                <th className="text-left p-4 text-text-secondary font-medium text-sm">Code</th>
+                                <th className="text-left p-4 text-text-secondary font-medium text-sm">Subject Name</th>
+                                <th className="text-left p-4 text-text-secondary font-medium text-sm hidden md:table-cell">Type</th>
+                                <th className="text-left p-4 text-text-secondary font-medium text-sm">Credits</th>
+                                <th className="text-left p-4 text-text-secondary font-medium text-sm">Professor</th>
+                                <th className="text-right p-4 text-text-secondary font-medium text-sm">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {subjects.map((subject) => (
+                                <tr key={subject.id} className="border-b border-white/5 hover:bg-white/5">
+                                    <td className="p-4 font-mono text-sm text-primary">{subject.subject_code}</td>
+                                    <td className="p-4">
+                                        <span className="font-medium text-text-primary">{subject.subject_name}</span>
+                                    </td>
+                                    <td className="p-4 hidden md:table-cell">
+                                        <span className={`text-xs px-2 py-1 rounded-full ${subject.subject_type === 'theory' ? 'bg-primary/20 text-primary' :
+                                            subject.subject_type === 'lab' ? 'bg-accent-teal/20 text-accent-teal' :
+                                                'bg-secondary/20 text-secondary'
+                                            }`}>
+                                            {subject.subject_type}
+                                        </span>
+                                    </td>
+                                    <td className="p-4 text-text-secondary">{subject.credits}</td>
+                                    <td className="p-4">
+                                        {subject.professor_name && subject.professor_name !== 'Not assigned' ? (
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-8 h-8 rounded-full bg-secondary/20 flex items-center justify-center">
+                                                    <span className="text-secondary text-sm font-semibold">
+                                                        {subject.professor_name.charAt(0)}
+                                                    </span>
+                                                </div>
+                                                <span className="text-text-primary">{subject.professor_name}</span>
+                                            </div>
+                                        ) : (
+                                            <span className="text-text-muted italic">Not assigned</span>
+                                        )}
+                                    </td>
+                                    <td className="p-4">
+                                        <div className="flex justify-end gap-2">
+                                            <button
+                                                onClick={() => openProfessorModal(subject)}
+                                                className="px-3 py-1.5 text-sm bg-secondary/10 text-secondary rounded-lg hover:bg-secondary/20 transition-colors"
+                                            >
+                                                {subject.professor_id ? 'Change' : 'Assign'} Professor
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                )}
+            </div>
+
+            {/* Add Subject Modal */}
+            {isAddModalOpen && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-bg-secondary border border-white/10 rounded-2xl w-full max-w-md">
+                        <div className="flex items-center justify-between p-6 border-b border-white/10">
+                            <h2 className="text-xl font-bold text-text-primary">Add Subject to Class</h2>
+                            <button onClick={() => setIsAddModalOpen(false)} className="p-2 text-text-secondary hover:text-text-primary">
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-text-secondary mb-1">Select Subject</label>
+                                <select
+                                    value={selectedSubject}
+                                    onChange={(e) => setSelectedSubject(e.target.value)}
+                                    className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-text-primary focus:outline-none focus:border-primary"
+                                >
+                                    <option value="">Select a subject...</option>
+                                    {allSubjects.map((s) => (
+                                        <option key={s.id} value={s.id}>{s.subject_code} - {s.subject_name}</option>
+                                    ))}
+                                </select>
                             </div>
-                            <h3 className="font-semibold text-text-primary mb-2">{subject.subject_name}</h3>
-                            <p className="text-sm text-text-secondary">
-                                {subject.professor_name || 'No professor assigned'}
-                            </p>
-                            <div className="flex gap-2 mt-4 pt-4 border-t border-white/10">
-                                <button className="flex-1 text-sm px-3 py-1.5 border border-white/10 text-text-secondary rounded hover:bg-white/5">
-                                    Edit
+                            {allSubjects.length === 0 && (
+                                <p className="text-sm text-warning">No subjects available. Create subjects first from the Subjects page.</p>
+                            )}
+                            <div className="flex gap-3 pt-4">
+                                <button
+                                    type="button"
+                                    onClick={() => setIsAddModalOpen(false)}
+                                    className="flex-1 px-4 py-2.5 border border-white/10 text-text-secondary rounded-lg hover:bg-white/5"
+                                >
+                                    Cancel
                                 </button>
-                                <button className="flex-1 text-sm px-3 py-1.5 border border-white/10 text-text-secondary rounded hover:bg-white/5">
-                                    Remove
+                                <button
+                                    onClick={handleAssignSubject}
+                                    disabled={submitting || !selectedSubject}
+                                    className="flex-1 px-4 py-2.5 bg-gradient-to-r from-secondary to-primary text-white font-semibold rounded-lg disabled:opacity-50 flex items-center justify-center gap-2"
+                                >
+                                    {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
+                                    Add Subject
                                 </button>
                             </div>
                         </div>
-                    ))
-                )}
-            </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Assign Professor Modal */}
+            {isProfessorModalOpen && selectedClassSubject && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-bg-secondary border border-white/10 rounded-2xl w-full max-w-md">
+                        <div className="flex items-center justify-between p-6 border-b border-white/10">
+                            <div>
+                                <h2 className="text-xl font-bold text-text-primary">Assign Professor</h2>
+                                <p className="text-sm text-text-secondary mt-1">
+                                    {selectedClassSubject.subject_code} - {selectedClassSubject.subject_name}
+                                </p>
+                            </div>
+                            <button onClick={() => setIsProfessorModalOpen(false)} className="p-2 text-text-secondary hover:text-text-primary">
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-text-secondary mb-1">Select Professor</label>
+                                <select
+                                    value={selectedProfessor}
+                                    onChange={(e) => setSelectedProfessor(e.target.value)}
+                                    className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-text-primary focus:outline-none focus:border-primary"
+                                >
+                                    <option value="">No professor (unassign)</option>
+                                    {allProfessors.map((p) => (
+                                        <option key={p.id} value={p.id}>
+                                            {p.full_name} - {p.designation || 'Professor'}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="flex gap-3 pt-4">
+                                <button
+                                    type="button"
+                                    onClick={() => setIsProfessorModalOpen(false)}
+                                    className="flex-1 px-4 py-2.5 border border-white/10 text-text-secondary rounded-lg hover:bg-white/5"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={handleAssignProfessor}
+                                    disabled={submitting}
+                                    className="flex-1 px-4 py-2.5 bg-gradient-to-r from-secondary to-primary text-white font-semibold rounded-lg disabled:opacity-50 flex items-center justify-center gap-2"
+                                >
+                                    {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
+                                    {selectedProfessor ? 'Assign Professor' : 'Remove Assignment'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
@@ -290,14 +986,18 @@ function TimetableTab({ classId }: { classId: string }) {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        // Mock timetable
-        setTimetable([
-            { id: '1', day_of_week: 0, start_time: '09:00', end_time: '10:00', subject_name: 'Data Structures', subject_code: 'CS201', professor_name: 'Dr. John', room_number: 'A101' },
-            { id: '2', day_of_week: 0, start_time: '10:00', end_time: '11:00', subject_name: 'Database', subject_code: 'CS202', professor_name: 'Dr. Sarah', room_number: 'A102' },
-            { id: '3', day_of_week: 1, start_time: '09:00', end_time: '10:00', subject_name: 'OS', subject_code: 'CS203', professor_name: 'Dr. Mike', room_number: 'A103' },
-            { id: '4', day_of_week: 2, start_time: '11:00', end_time: '12:00', subject_name: 'Networks', subject_code: 'CS204', professor_name: 'Dr. Emily', room_number: 'Lab1' },
-        ]);
-        setLoading(false);
+        const fetchTimetable = async () => {
+            try {
+                // TODO: Implement timetable API
+                // const response = await fetch(`http://localhost:4003/api/admin/v1/academic/classes/${classId}/timetable`);
+                setTimetable([]);
+            } catch (error) {
+                console.error('Error fetching timetable:', error);
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchTimetable();
     }, [classId]);
 
     const getSlot = (day: number, time: string) => {
@@ -366,12 +1066,18 @@ function CRTab({ classId, currentCR }: { classId: string; currentCR?: { id: stri
     const [saving, setSaving] = useState(false);
 
     useEffect(() => {
-        // Mock students
-        setStudents([
-            { id: '1', roll_number: '2024CSE001', full_name: 'Rahul Singh', email: 'rahul@college.edu', is_active: true },
-            { id: '2', roll_number: '2024CSE002', full_name: 'Priya Sharma', email: 'priya@college.edu', is_active: true },
-            { id: '3', roll_number: '2024CSE003', full_name: 'Amit Kumar', email: 'amit@college.edu', is_active: true },
-        ]);
+        const fetchStudents = async () => {
+            try {
+                const response = await fetch(`http://localhost:4003/api/admin/v1/academic/classes/${classId}/students`);
+                if (response.ok) {
+                    const result = await response.json();
+                    setStudents(result.data || []);
+                }
+            } catch (error) {
+                console.error('Error fetching students for CR:', error);
+            }
+        };
+        fetchStudents();
     }, [classId]);
 
     const handleSave = async () => {
@@ -445,12 +1151,18 @@ function InChargeTab({ classId, currentInCharge }: { classId: string; currentInC
     const [saving, setSaving] = useState(false);
 
     useEffect(() => {
-        // Mock professors
-        setProfessors([
-            { id: '1', employee_id: 'EMP001', full_name: 'Dr. John Smith', designation: 'Associate Professor' },
-            { id: '2', employee_id: 'EMP002', full_name: 'Dr. Sarah Johnson', designation: 'Professor' },
-            { id: '3', employee_id: 'EMP003', full_name: 'Dr. Mike Brown', designation: 'Assistant Professor' },
-        ]);
+        const fetchProfessors = async () => {
+            try {
+                const response = await fetch('http://localhost:4003/api/admin/v1/professors');
+                if (response.ok) {
+                    const result = await response.json();
+                    setProfessors(result.data || []);
+                }
+            } catch (error) {
+                console.error('Error fetching professors:', error);
+            }
+        };
+        fetchProfessors();
     }, [classId]);
 
     const handleSave = async () => {
@@ -552,18 +1264,22 @@ export default function ClassManagement() {
                 // Mock data
                 setClassInfo({
                     id: classId,
-                    class_name: '2024-CSE-A',
-                    section: 'A',
-                    current_semester: 1,
+                    class_label: '2024-CSE-A',
                     batch_id: '1',
                     batch_name: '2024-2028',
+                    batch_year: 2024,
                     branch_id: '1',
                     branch_name: 'Computer Science & Engineering',
                     branch_code: 'CSE',
-                    class_incharge_id: '1',
+                    course_id: '1',
+                    course_name: 'B.Tech',
+                    course_code: 'BTECH',
+                    current_strength: 60,
+                    class_teacher_id: '1',
                     class_incharge_name: 'Dr. John Smith',
                     class_representative_id: '1',
                     class_representative_name: 'Rahul Singh',
+                    is_active: true,
                 });
                 setLoading(false);
                 return;
@@ -573,10 +1289,10 @@ export default function ClassManagement() {
                 const { data, error } = await supabase
                     .from('classes')
                     .select(`
-            *,
-            batches(id, batch_name),
-            branches(id, branch_name, branch_code, course_id)
-          `)
+                        *,
+                        batches(id, batch_name, batch_year),
+                        branches(id, branch_name, branch_code, course_id, courses(id, course_name, course_code))
+                    `)
                     .eq('id', classId)
                     .single();
 
@@ -584,15 +1300,19 @@ export default function ClassManagement() {
 
                 setClassInfo({
                     id: data.id,
-                    class_name: data.class_name,
-                    section: data.section,
-                    current_semester: data.current_semester,
+                    class_label: data.class_label,
                     batch_id: data.batch_id,
                     batch_name: data.batches?.batch_name || '',
+                    batch_year: data.batches?.batch_year,
                     branch_id: data.branch_id,
                     branch_name: data.branches?.branch_name || '',
                     branch_code: data.branches?.branch_code || '',
                     course_id: data.branches?.course_id,
+                    course_name: data.branches?.courses?.course_name || '',
+                    course_code: data.branches?.courses?.course_code || '',
+                    current_strength: data.current_strength || 0,
+                    class_teacher_id: data.class_teacher_id,
+                    is_active: data.is_active,
                 });
             } catch (error) {
                 console.error('Error fetching class:', error);
@@ -651,10 +1371,23 @@ export default function ClassManagement() {
                 <Link to={`/batches/${classInfo.batch_id}`} className="text-text-secondary hover:text-primary">
                     {classInfo.batch_name}
                 </Link>
+                {classInfo.course_id && (
+                    <>
+                        <ChevronRight className="w-4 h-4 text-text-muted" />
+                        <Link to={`/batches/${classInfo.batch_id}/courses/${classInfo.course_id}`} className="text-text-secondary hover:text-primary">
+                            {classInfo.course_code || 'Course'}
+                        </Link>
+                    </>
+                )}
                 <ChevronRight className="w-4 h-4 text-text-muted" />
-                <span className="text-text-muted">{classInfo.branch_code}</span>
+                <Link
+                    to={`/batches/${classInfo.batch_id}/courses/${classInfo.course_id}/branches/${classInfo.branch_id}/sections`}
+                    className="text-text-secondary hover:text-primary"
+                >
+                    {classInfo.branch_code}
+                </Link>
                 <ChevronRight className="w-4 h-4 text-text-muted" />
-                <span className="text-text-primary font-medium">{classInfo.class_name}</span>
+                <span className="text-text-primary font-medium">{classInfo.class_label}</span>
             </nav>
 
             {/* Header */}
@@ -669,11 +1402,11 @@ export default function ClassManagement() {
                     <div>
                         <div className="flex items-center gap-3">
                             <div className="w-12 h-12 rounded-xl bg-accent-orange/20 flex items-center justify-center">
-                                <span className="text-xl font-bold text-accent-orange">{classInfo.section}</span>
+                                <span className="text-xl font-bold text-accent-orange">{classInfo.class_label?.split('-').pop() || 'A'}</span>
                             </div>
                             <div>
-                                <h1 className="text-2xl font-bold text-text-primary">{classInfo.class_name}</h1>
-                                <p className="text-text-secondary">{classInfo.branch_name}</p>
+                                <h1 className="text-2xl font-bold text-text-primary">{classInfo.class_label}</h1>
+                                <p className="text-text-secondary">{classInfo.branch_name} • {classInfo.course_name}</p>
                             </div>
                         </div>
                     </div>
@@ -681,8 +1414,8 @@ export default function ClassManagement() {
 
                 <div className="flex items-center gap-3">
                     <div className="flex items-center gap-2 px-3 py-1.5 bg-white/5 rounded-lg">
-                        <Calendar className="w-4 h-4 text-text-muted" />
-                        <span className="text-sm text-text-secondary">Sem {classInfo.current_semester}</span>
+                        <Users className="w-4 h-4 text-text-muted" />
+                        <span className="text-sm text-text-secondary">{classInfo.current_strength} Students</span>
                     </div>
                     <button className="flex items-center gap-2 px-4 py-2 border border-white/10 text-text-secondary rounded-lg hover:bg-white/5">
                         <Edit className="w-4 h-4" />
@@ -698,8 +1431,8 @@ export default function ClassManagement() {
                     <p className="text-lg font-semibold text-text-primary mt-1">{classInfo.batch_name}</p>
                 </div>
                 <div className="bg-gradient-to-br from-bg-secondary/95 to-bg-tertiary/95 border border-white/10 rounded-xl p-4">
-                    <p className="text-sm text-text-muted">Current Semester</p>
-                    <p className="text-lg font-semibold text-text-primary mt-1">Semester {classInfo.current_semester}</p>
+                    <p className="text-sm text-text-muted">Course</p>
+                    <p className="text-lg font-semibold text-text-primary mt-1">{classInfo.course_name || 'N/A'}</p>
                 </div>
                 <div className="bg-gradient-to-br from-bg-secondary/95 to-bg-tertiary/95 border border-white/10 rounded-xl p-4">
                     <p className="text-sm text-text-muted">Class In-Charge</p>
@@ -735,8 +1468,8 @@ export default function ClassManagement() {
 
             {/* Tab Content */}
             <div className="mt-6">
-                {activeTab === 'students' && <StudentsTab classId={classId!} className={classInfo.class_name} />}
-                {activeTab === 'subjects' && <SubjectsTab classId={classId!} semester={classInfo.current_semester} />}
+                {activeTab === 'students' && <StudentsTab classId={classId!} className={classInfo.class_label} />}
+                {activeTab === 'subjects' && <SubjectsTab classId={classId!} semester={1} />}
                 {activeTab === 'timetable' && <TimetableTab classId={classId!} />}
                 {activeTab === 'cr' && (
                     <CRTab
@@ -747,7 +1480,7 @@ export default function ClassManagement() {
                 {activeTab === 'incharge' && (
                     <InChargeTab
                         classId={classId!}
-                        currentInCharge={classInfo.class_incharge_id ? { id: classInfo.class_incharge_id, name: classInfo.class_incharge_name! } : undefined}
+                        currentInCharge={classInfo.class_teacher_id ? { id: classInfo.class_teacher_id, name: classInfo.class_incharge_name! } : undefined}
                     />
                 )}
             </div>

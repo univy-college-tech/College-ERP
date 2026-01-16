@@ -35,7 +35,7 @@ interface DashboardStats {
     totalStudents: number;
     totalProfessors: number;
     totalBatches: number;
-    totalCourses: number;
+    totalSubjects: number;
 }
 
 interface AuditLog {
@@ -204,7 +204,7 @@ export default function Dashboard() {
         totalStudents: 0,
         totalProfessors: 0,
         totalBatches: 0,
-        totalCourses: 0,
+        totalSubjects: 0,
     });
     const [recentActivity, setRecentActivity] = useState<AuditLog[]>([]);
     const [loading, setLoading] = useState(true);
@@ -218,7 +218,7 @@ export default function Dashboard() {
                     totalStudents: 1234,
                     totalProfessors: 56,
                     totalBatches: 4,
-                    totalCourses: 8,
+                    totalSubjects: 24,
                 });
                 setRecentActivity([]);
                 setLoading(false);
@@ -227,11 +227,11 @@ export default function Dashboard() {
 
             try {
                 // Fetch counts in parallel
-                const [studentsRes, professorsRes, batchesRes, coursesRes, activityRes] = await Promise.all([
+                const [studentsRes, professorsRes, batchesRes, subjectsRes, activityRes] = await Promise.all([
                     supabase.from('student_profiles').select('id', { count: 'exact', head: true }),
                     supabase.from('professor_profiles').select('id', { count: 'exact', head: true }),
                     supabase.from('batches').select('id', { count: 'exact', head: true }),
-                    supabase.from('courses').select('id', { count: 'exact', head: true }),
+                    supabase.from('subjects').select('id', { count: 'exact', head: true }).eq('is_active', true),
                     supabase.from('audit_logs').select('*').order('changed_at', { ascending: false }).limit(10),
                 ]);
 
@@ -239,7 +239,7 @@ export default function Dashboard() {
                     totalStudents: studentsRes.count || 0,
                     totalProfessors: professorsRes.count || 0,
                     totalBatches: batchesRes.count || 0,
-                    totalCourses: coursesRes.count || 0,
+                    totalSubjects: subjectsRes.count || 0,
                 });
 
                 setRecentActivity(activityRes.data || []);
@@ -257,7 +257,7 @@ export default function Dashboard() {
         { label: 'Add Student', icon: GraduationCap, path: '/students/new', color: 'primary' },
         { label: 'Add Professor', icon: Users, path: '/professors/new', color: 'secondary' },
         { label: 'Create Batch', icon: Building2, path: '/batches/new', color: 'teal' },
-        { label: 'Create Class', icon: BookOpen, path: '/classes/new', color: 'orange' },
+        { label: 'Add Subject', icon: BookOpen, path: '/subjects', color: 'orange' },
     ];
 
     return (
@@ -303,8 +303,8 @@ export default function Dashboard() {
                     loading={loading}
                 />
                 <StatCard
-                    label="Total Courses"
-                    value={stats.totalCourses}
+                    label="Total Subjects"
+                    value={stats.totalSubjects}
                     icon={BookOpen}
                     color="orange"
                     loading={loading}

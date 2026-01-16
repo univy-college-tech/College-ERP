@@ -10,7 +10,6 @@ import {
     Users,
     GraduationCap,
     BookOpen,
-    Building2,
     Calendar,
     Settings,
     Bell,
@@ -18,6 +17,8 @@ import {
     X,
     LogOut,
     ChevronRight,
+    Layers,
+    BookText,
 } from 'lucide-react';
 
 // ============================================
@@ -26,10 +27,11 @@ import {
 
 const navItems = [
     { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-    { path: '/students', icon: GraduationCap, label: 'Students' },
     { path: '/professors', icon: Users, label: 'Professors' },
-    { path: '/batches', icon: Building2, label: 'Batches' },
+    { path: '/students', icon: GraduationCap, label: 'Students' },
     { path: '/courses', icon: BookOpen, label: 'Courses' },
+    { path: '/batches', icon: Layers, label: 'Batches' },
+    { path: '/subjects', icon: BookText, label: 'Subjects' },
     { path: '/timetables', icon: Calendar, label: 'Timetables' },
     { path: '/settings', icon: Settings, label: 'Settings' },
 ];

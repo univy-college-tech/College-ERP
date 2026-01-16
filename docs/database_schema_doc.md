@@ -237,9 +237,26 @@ CREATE TABLE courses (
   course_name       text NOT NULL,  -- "B.Tech", "MBA"
   course_code       text UNIQUE NOT NULL,
   duration_years    int NOT NULL,
+  is_active         boolean DEFAULT true,
   created_at        timestamptz DEFAULT now(),
   is_deleted        boolean DEFAULT false
 );
+```
+
+### `batch_courses` ⭐ **(MANY-TO-MANY: Batch ↔ Course)**
+```sql
+-- Links which courses are offered in which batches
+CREATE TABLE batch_courses (
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  batch_id        uuid REFERENCES batches(id) ON DELETE CASCADE NOT NULL,
+  course_id       uuid REFERENCES courses(id) ON DELETE CASCADE NOT NULL,
+  is_active       boolean DEFAULT true,
+  created_at      timestamptz DEFAULT now(),
+  UNIQUE(batch_id, course_id)
+);
+
+CREATE INDEX idx_batch_courses_batch ON batch_courses(batch_id);
+CREATE INDEX idx_batch_courses_course ON batch_courses(course_id);
 ```
 
 ### `branches`
@@ -258,12 +275,30 @@ CREATE TABLE branches (
 );
 ```
 
+### `batch_branches` ⭐ **(MANY-TO-MANY: Batch ↔ Branch)**
+```sql
+-- Links which branches are offered in which batches
+-- A branch (e.g., CSE under B.Tech) can be offered in multiple batches
+CREATE TABLE batch_branches (
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  batch_id        uuid REFERENCES batches(id) ON DELETE CASCADE NOT NULL,
+  branch_id       uuid REFERENCES branches(id) ON DELETE CASCADE NOT NULL,
+  is_active       boolean DEFAULT true,
+  created_at      timestamptz DEFAULT now(),
+  UNIQUE(batch_id, branch_id)
+);
+
+CREATE INDEX idx_batch_branches_batch ON batch_branches(batch_id);
+CREATE INDEX idx_batch_branches_branch ON batch_branches(branch_id);
+```
+
 ### `sections`
 ```sql
 CREATE TABLE sections (
   id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   branch_id       uuid REFERENCES branches(id) ON DELETE CASCADE,
   section_name    text NOT NULL,  -- "A", "B", "C"
+  is_active       boolean DEFAULT true,
   created_at      timestamptz DEFAULT now(),
   is_deleted      boolean DEFAULT false,
   UNIQUE(branch_id, section_name)
@@ -272,25 +307,24 @@ CREATE TABLE sections (
 
 ### `classes` ⭐ **(OPERATIONAL CORE)**
 ```sql
+-- The CLASS is the operational unit where students, subjects, and timetables converge
+-- Each class belongs to a specific batch and branch
 CREATE TABLE classes (
   id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  batch_id            uuid REFERENCES batches(id) ON DELETE CASCADE,
-  course_id           uuid REFERENCES courses(id) ON DELETE CASCADE,
-  branch_id           uuid REFERENCES branches(id) ON DELETE CASCADE,
-  section_id          uuid REFERENCES sections(id) ON DELETE CASCADE,
-  academic_year_id    uuid REFERENCES academic_years(id),
-  current_semester_id uuid REFERENCES semesters(id),
+  batch_id            uuid REFERENCES batches(id) ON DELETE CASCADE NOT NULL,
+  branch_id           uuid REFERENCES branches(id) ON DELETE CASCADE NOT NULL,
   class_label         text NOT NULL,  -- "2024-CSE-A"
   class_incharge_id   uuid REFERENCES professor_profiles(id),
+  current_strength    int DEFAULT 0,
   is_active           boolean DEFAULT true,
   created_at          timestamptz DEFAULT now(),
   created_by          uuid REFERENCES users(id),
   is_deleted          boolean DEFAULT false,
-  UNIQUE(batch_id, course_id, branch_id, section_id, academic_year_id)
+  UNIQUE(batch_id, branch_id, class_label)
 );
 
 CREATE INDEX idx_classes_batch ON classes(batch_id);
-CREATE INDEX idx_classes_semester ON classes(current_semester_id);
+CREATE INDEX idx_classes_branch ON classes(branch_id);
 ```
 
 ---

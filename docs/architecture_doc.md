@@ -32,19 +32,33 @@
 
 ```
 Institution
-    └── Departments
-         └── Courses (B.Tech, MBA, etc.)
-              └── Batches (2023-2027, 2024-2028)
-                   └── Branches (CSE, ECE, IT)
-                        └── Sections (A, B, C)
-                             └── CLASS ← Operational Unit
-                                  ├── Students (50-60)
-                                  ├── Subjects (per semester)
-                                  ├── Professors (per subject)
-                                  ├── Timetable
-                                  ├── CR (1 student)
-                                  └── Class In-charge (1 professor)
+    └── Departments (CSE, ECE, Mechanical, etc.)
+
+Academic Structure (Managed in Admin Portal):
+
+    BATCHES (2023-2027, 2024-2028)
+        │
+        ├── Linked COURSES (B.Tech, MBA, etc.) [via batch_courses]
+        │       │
+        │       └── BRANCHES (CSE, IT, ECE) [Course owns branches]
+        │               │
+        │               └── Linked to Batch [via batch_branches]
+        │                       │
+        │                       └── CLASSES (2024-CSE-A, 2024-CSE-B)
+        │                               │
+        │                               ├── Students (50-60)
+        │                               ├── Subjects (per semester)
+        │                               ├── Professors (per subject)
+        │                               ├── Timetable
+        │                               ├── CR (1 student)
+        │                               └── Class In-charge (1 professor)
 ```
+
+### Relationship Summary:
+- **Batch ↔ Course**: Many-to-Many (`batch_courses` table)
+- **Course → Branch**: One-to-Many (a course has multiple branches)
+- **Batch ↔ Branch**: Many-to-Many (`batch_branches` table) - which branches are offered in which batch
+- **Class**: Belongs to one Batch + one Branch. Label format: `{YEAR}-{BRANCH_CODE}-{SECTION}`
 
 **Critical Understanding**: The **CLASS** is where everything converges. It's the actual operational unit.
 

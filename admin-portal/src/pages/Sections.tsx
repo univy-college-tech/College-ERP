@@ -33,12 +33,10 @@ const supabase = supabaseUrl && supabaseAnonKey
 
 interface Class {
     id: string;
-    class_name: string;
-    section: string;
-    current_semester: number;
-    student_count?: number;
-    class_incharge_name?: string;
-    cr_name?: string;
+    class_label: string;
+    current_strength?: number;
+    class_teacher_id?: string;
+    is_active?: boolean;
 }
 
 interface Branch {
@@ -73,8 +71,7 @@ export default function Sections() {
     const [loading, setLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [formData, setFormData] = useState({
-        section: '',
-        current_semester: 1,
+        section_letter: '',
     });
     const [submitting, setSubmitting] = useState(false);
     const [successMessage, setSuccessMessage] = useState('');
@@ -84,15 +81,6 @@ export default function Sections() {
     useEffect(() => {
         const fetchData = async () => {
             if (!supabase || !branchId || !courseId || !batchId) {
-                // Mock data
-                setBatch({ id: batchId || '1', batch_name: '2024-2028' });
-                setCourse({ id: courseId || '1', course_name: 'B.Tech Computer Science', course_code: 'BTCS' });
-                setBranch({ id: branchId || '1', branch_name: 'Computer Science & Engineering', branch_code: 'CSE' });
-                setClasses([
-                    { id: '1', class_name: '2024-CSE-A', section: 'A', current_semester: 1, student_count: 60, class_incharge_name: 'Dr. John Smith', cr_name: 'Rahul Singh' },
-                    { id: '2', class_name: '2024-CSE-B', section: 'B', current_semester: 1, student_count: 58, class_incharge_name: 'Dr. Sarah Johnson', cr_name: 'Priya Sharma' },
-                    { id: '3', class_name: '2024-CSE-C', section: 'C', current_semester: 1, student_count: 55, class_incharge_name: 'Dr. Mike Brown' },
-                ]);
                 setLoading(false);
                 return;
             }
@@ -102,7 +90,7 @@ export default function Sections() {
                     supabase.from('batches').select('id, batch_name').eq('id', batchId).single(),
                     supabase.from('courses').select('id, course_name, course_code').eq('id', courseId).single(),
                     supabase.from('branches').select('id, branch_name, branch_code').eq('id', branchId).single(),
-                    supabase.from('classes').select('*').eq('branch_id', branchId).eq('batch_id', batchId).order('section'),
+                    supabase.from('classes').select('*').eq('branch_id', branchId).eq('batch_id', batchId).order('class_label'),
                 ]);
 
                 if (batchRes.error) throw batchRes.error;
@@ -130,16 +118,14 @@ export default function Sections() {
         setSubmitting(true);
         setErrorMessage('');
 
-        const className = `${batch?.batch_name?.split('-')[0] || ''}-${branch?.branch_code || ''}-${formData.section}`;
+        const classLabel = `${batch?.batch_name?.split('-')[0] || ''}-${branch?.branch_code || ''}-${formData.section_letter}`;
 
         try {
             const response = await fetch('http://localhost:4003/api/admin/v1/academic/classes', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    class_name: className,
-                    section: formData.section,
-                    current_semester: formData.current_semester,
+                    class_label: classLabel,
                     batch_id: batchId,
                     branch_id: branchId,
                 }),
@@ -154,7 +140,7 @@ export default function Sections() {
             setClasses([...classes, result.data]);
             setSuccessMessage('Section created successfully!');
             setIsModalOpen(false);
-            setFormData({ section: '', current_semester: 1 });
+            setFormData({ section_letter: '' });
             setTimeout(() => setSuccessMessage(''), 3000);
         } catch (error) {
             setErrorMessage(error instanceof Error ? error.message : 'An error occurred');
@@ -245,44 +231,41 @@ export default function Sections() {
                 </div>
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {classes.map((cls) => (
-                        <div
-                            key={cls.id}
-                            onClick={() => navigate(`/classes/${cls.id}`)}
-                            className="bg-gradient-to-br from-bg-secondary/95 to-bg-tertiary/95 border border-white/10 rounded-xl p-6 cursor-pointer hover:border-accent-orange/50 hover:-translate-y-1 transition-all group"
-                        >
-                            <div className="flex items-center justify-between mb-4">
-                                <div className="w-14 h-14 rounded-xl bg-accent-orange/10 flex items-center justify-center">
-                                    <span className="text-2xl font-bold text-accent-orange">{cls.section}</span>
+                    {classes.map((cls) => {
+                        const sectionLetter = cls.class_label?.split('-').pop() || '?';
+                        return (
+                            <div
+                                key={cls.id}
+                                onClick={() => navigate(`/classes/${cls.id}`)}
+                                className="bg-gradient-to-br from-bg-secondary/95 to-bg-tertiary/95 border border-white/10 rounded-xl p-6 cursor-pointer hover:border-accent-orange/50 hover:-translate-y-1 transition-all group"
+                            >
+                                <div className="flex items-center justify-between mb-4">
+                                    <div className="w-14 h-14 rounded-xl bg-accent-orange/10 flex items-center justify-center">
+                                        <span className="text-2xl font-bold text-accent-orange">{sectionLetter}</span>
+                                    </div>
+                                    <span className={`text-xs font-medium px-2 py-1 rounded ${cls.is_active !== false ? 'bg-success/20 text-success' : 'bg-error/20 text-error'}`}>
+                                        {cls.is_active !== false ? 'Active' : 'Inactive'}
+                                    </span>
                                 </div>
-                                <span className="text-xs font-medium text-text-muted bg-white/5 px-2 py-1 rounded">
-                                    Sem {cls.current_semester}
-                                </span>
-                            </div>
 
-                            <h3 className="text-lg font-semibold text-text-primary mb-3 group-hover:text-accent-orange transition-colors">
-                                {cls.class_name}
-                            </h3>
+                                <h3 className="text-lg font-semibold text-text-primary mb-3 group-hover:text-accent-orange transition-colors">
+                                    {cls.class_label}
+                                </h3>
 
-                            <div className="space-y-2 mb-4">
-                                <div className="flex items-center gap-2">
-                                    <Users className="w-4 h-4 text-text-muted" />
-                                    <span className="text-sm text-text-secondary">{cls.student_count || 0} students</span>
+                                <div className="space-y-2 mb-4">
+                                    <div className="flex items-center gap-2">
+                                        <Users className="w-4 h-4 text-text-muted" />
+                                        <span className="text-sm text-text-secondary">{cls.current_strength || 0} students</span>
+                                    </div>
                                 </div>
-                                {cls.class_incharge_name && (
-                                    <p className="text-sm text-text-muted">In-Charge: {cls.class_incharge_name}</p>
-                                )}
-                                {cls.cr_name && (
-                                    <p className="text-sm text-text-muted">CR: {cls.cr_name}</p>
-                                )}
-                            </div>
 
-                            <div className="flex items-center justify-between pt-4 border-t border-white/10">
-                                <span className="text-sm text-text-muted">Manage Class</span>
-                                <ChevronRight className="w-5 h-5 text-text-muted group-hover:text-accent-orange group-hover:translate-x-1 transition-all" />
+                                <div className="flex items-center justify-between pt-4 border-t border-white/10">
+                                    <span className="text-sm text-text-muted">Manage Class</span>
+                                    <ChevronRight className="w-5 h-5 text-text-muted group-hover:text-accent-orange group-hover:translate-x-1 transition-all" />
+                                </div>
                             </div>
-                        </div>
-                    ))}
+                        );
+                    })}
                 </div>
             )}
 
@@ -299,39 +282,26 @@ export default function Sections() {
 
                         <form onSubmit={handleSubmit} className="p-6 space-y-4">
                             <div>
-                                <label className="block text-sm font-medium text-text-secondary mb-1">Section</label>
+                                <label className="block text-sm font-medium text-text-secondary mb-1">Section Letter</label>
                                 <input
                                     type="text"
-                                    value={formData.section}
-                                    onChange={(e) => setFormData({ ...formData, section: e.target.value.toUpperCase() })}
+                                    value={formData.section_letter}
+                                    onChange={(e) => setFormData({ ...formData, section_letter: e.target.value.toUpperCase() })}
                                     className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-text-primary text-center text-2xl font-bold focus:outline-none focus:border-primary"
                                     placeholder="A"
                                     maxLength={1}
                                     required
                                 />
                                 <p className="text-text-muted text-xs mt-1 text-center">
-                                    Class: {batch?.batch_name?.split('-')[0]}-{branch?.branch_code}-{formData.section || '?'}
+                                    Class: {batch?.batch_name?.split('-')[0]}-{branch?.branch_code}-{formData.section_letter || '?'}
                                 </p>
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-medium text-text-secondary mb-1">Current Semester</label>
-                                <select
-                                    value={formData.current_semester}
-                                    onChange={(e) => setFormData({ ...formData, current_semester: parseInt(e.target.value) })}
-                                    className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-text-primary focus:outline-none focus:border-primary"
-                                >
-                                    {[1, 2, 3, 4, 5, 6, 7, 8].map((sem) => (
-                                        <option key={sem} value={sem}>Semester {sem}</option>
-                                    ))}
-                                </select>
                             </div>
 
                             <div className="flex gap-3 pt-4">
                                 <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 px-4 py-2.5 border border-white/10 text-text-secondary rounded-lg hover:bg-white/5">
                                     Cancel
                                 </button>
-                                <button type="submit" disabled={submitting || !formData.section} className="flex-1 px-4 py-2.5 bg-gradient-to-r from-accent-teal to-primary text-white font-semibold rounded-lg disabled:opacity-50 flex items-center justify-center gap-2">
+                                <button type="submit" disabled={submitting || !formData.section_letter} className="flex-1 px-4 py-2.5 bg-gradient-to-r from-accent-teal to-primary text-white font-semibold rounded-lg disabled:opacity-50 flex items-center justify-center gap-2">
                                     {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
                                     Create
                                 </button>

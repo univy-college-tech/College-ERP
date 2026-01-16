@@ -15,6 +15,11 @@ import BatchDetail from './pages/BatchDetail';
 import CourseDetail from './pages/CourseDetail';
 import Sections from './pages/Sections';
 import ClassManagement from './pages/ClassManagement';
+import Subjects from './pages/Subjects';
+import Courses from './pages/Courses';
+import CourseBranches from './pages/CourseBranches';
+import CourseBatches from './pages/CourseBatches';
+import CourseBatchBranches from './pages/CourseBatchBranches';
 import { Layout } from './components/layout/Layout';
 
 // ============================================
@@ -94,6 +99,13 @@ function App() {
                         <Route path="classes/:classId" element={<ClassManagement />} />
 
                         {/* Other pages */}
+                        {/* Courses Management - Course → Batches → Branches/Classes */}
+                        <Route path="courses" element={<Courses />} />
+                        <Route path="courses/:courseId" element={<CourseBatches />} />
+                        <Route path="courses/:courseId/branches" element={<CourseBranches />} />
+                        <Route path="courses/:courseId/batches/:batchId" element={<CourseBatchBranches />} />
+
+                        <Route path="subjects" element={<Subjects />} />
                         <Route path="timetables" element={<PlaceholderPage title="Timetables" />} />
                         <Route path="settings" element={<PlaceholderPage title="Settings" />} />
                     </Route>

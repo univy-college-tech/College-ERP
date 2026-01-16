@@ -8,6 +8,9 @@ import {
     Settings,
     ChevronLeft,
     ChevronRight,
+    BookOpen,
+    Layers,
+    BookText,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -19,7 +22,10 @@ const navItems = [
     { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
     { icon: Users, label: 'Professors', path: '/professors' },
     { icon: GraduationCap, label: 'Students', path: '/students' },
+    { icon: BookOpen, label: 'Courses', path: '/courses' },
+    { icon: Layers, label: 'Batches', path: '/batches' },
     { icon: Building2, label: 'Classes', path: '/classes' },
+    { icon: BookText, label: 'Subjects', path: '/subjects' },
     { icon: CalendarDays, label: 'Timetables', path: '/timetables' },
     { icon: Settings, label: 'Settings', path: '/settings' },
 ];
@@ -51,7 +57,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
             </div>
 
             {/* Navigation */}
-            <nav className="flex-1 py-4 px-3 space-y-1">
+            <nav className="flex-1 py-4 px-3 space-y-1 overflow-y-auto scrollbar-hide">
                 {navItems.map((item) => (
                     <NavLink
                         key={item.path}
