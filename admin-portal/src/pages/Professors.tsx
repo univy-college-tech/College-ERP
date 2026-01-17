@@ -21,6 +21,7 @@ import {
     Building2,
     Briefcase,
     Calendar,
+    Lock,
 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 
@@ -63,6 +64,7 @@ interface Department {
 interface ProfessorFormData {
     full_name: string;
     email: string;
+    password: string;
     phone: string;
     employee_id: string;
     department_id: string;
@@ -94,6 +96,7 @@ export default function Professors() {
     const [formData, setFormData] = useState<ProfessorFormData>({
         full_name: '',
         email: '',
+        password: '',
         phone: '',
         employee_id: '',
         department_id: '',
@@ -244,6 +247,7 @@ export default function Professors() {
         setFormData({
             full_name: '',
             email: '',
+            password: '',
             phone: '',
             employee_id: '',
             department_id: '',
@@ -262,6 +266,7 @@ export default function Professors() {
         setFormData({
             full_name: professor.full_name,
             email: professor.email,
+            password: '', // Don't prefill password on edit
             phone: professor.phone || '',
             employee_id: professor.employee_id,
             department_id: professor.department_id || '',
@@ -587,6 +592,25 @@ export default function Professors() {
                                     />
                                 </div>
                             </div>
+
+                            {/* Password - Only show when creating new professor */}
+                            {!editingProfessor && (
+                                <div>
+                                    <label className="block text-sm font-medium text-text-secondary mb-1">
+                                        Password <span className="text-text-muted">(Leave empty for default: Prof@EmpID)</span>
+                                    </label>
+                                    <div className="relative">
+                                        <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
+                                        <input
+                                            type="password"
+                                            value={formData.password}
+                                            onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                                            className="w-full pl-10 pr-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-text-primary focus:outline-none focus:border-primary"
+                                            placeholder="Minimum 6 characters"
+                                        />
+                                    </div>
+                                </div>
+                            )}
 
                             {/* Department */}
                             <div>

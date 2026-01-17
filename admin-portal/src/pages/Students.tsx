@@ -21,6 +21,7 @@ import {
     Calendar,
     Hash,
     GraduationCap,
+    Lock,
 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 
@@ -69,6 +70,7 @@ interface Course {
 interface StudentFormData {
     full_name: string;
     email: string;
+    password: string;
     phone: string;
     roll_number: string;
     enrollment_number: string;
@@ -101,6 +103,7 @@ export default function Students() {
     const [formData, setFormData] = useState<StudentFormData>({
         full_name: '',
         email: '',
+        password: '',
         phone: '',
         roll_number: '',
         enrollment_number: '',
@@ -258,6 +261,7 @@ export default function Students() {
         setFormData({
             full_name: '',
             email: '',
+            password: '',
             phone: '',
             roll_number: '',
             enrollment_number: '',
@@ -276,6 +280,7 @@ export default function Students() {
         setFormData({
             full_name: student.full_name,
             email: student.email,
+            password: '', // Don't prefill password on edit
             phone: student.phone || '',
             roll_number: student.roll_number,
             enrollment_number: student.enrollment_number || '',
@@ -612,6 +617,25 @@ export default function Students() {
                                     </div>
                                 </div>
                             </div>
+
+                            {/* Password - Only show when creating new student */}
+                            {!editingStudent && (
+                                <div>
+                                    <label className="block text-sm font-medium text-text-secondary mb-1">
+                                        Password <span className="text-text-muted">(Leave empty for default: Student@RollNo)</span>
+                                    </label>
+                                    <div className="relative">
+                                        <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
+                                        <input
+                                            type="password"
+                                            value={formData.password}
+                                            onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                                            className="w-full pl-10 pr-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-text-primary focus:outline-none focus:border-primary"
+                                            placeholder="Minimum 6 characters"
+                                        />
+                                    </div>
+                                </div>
+                            )}
 
                             {/* Enrollment & Admission Year */}
                             <div className="grid grid-cols-2 gap-4">

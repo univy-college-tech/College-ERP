@@ -15,6 +15,7 @@ const router = Router();
 const createStudentSchema = z.object({
     full_name: z.string().min(2, 'Name must be at least 2 characters'),
     email: z.string().email('Invalid email format'),
+    password: z.string().min(6, 'Password must be at least 6 characters').optional(),
     phone: z.string().optional().transform(v => v || undefined),
     roll_number: z.string().min(1, 'Roll number is required'),
     enrollment_number: z.string().optional().transform(v => v || undefined),
@@ -182,7 +183,10 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
             return;
         }
 
-        const { full_name, email, phone, roll_number, enrollment_number, admission_year, gender, date_of_birth, department_id } = validation.data;
+        const { full_name, email, password, phone, roll_number, enrollment_number, admission_year, gender, date_of_birth, department_id } = validation.data;
+
+        // Generate default password if not provided
+        const userPassword = password || `Student@${roll_number}`;
 
         // Check if email already exists
         const { data: existingUser } = await supabaseAdmin
@@ -211,7 +215,7 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
         // Create user in Supabase Auth
         const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
             email,
-            password: `Student@${roll_number}`, // Default password
+            password: userPassword,
             email_confirm: true,
             user_metadata: { full_name, role: 'student' },
         });
@@ -273,7 +277,7 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
                 roll_number,
                 full_name,
                 email,
-                default_password: `Student@${roll_number}`,
+                password: userPassword, // Return the password (custom or default)
             },
         });
     } catch (error) {

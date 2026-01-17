@@ -15,6 +15,7 @@ const router = Router();
 const createProfessorSchema = z.object({
     full_name: z.string().min(2, 'Name must be at least 2 characters'),
     email: z.string().email('Invalid email format'),
+    password: z.string().min(6, 'Password must be at least 6 characters').optional(),
     phone: z.string().optional().transform(v => v || undefined),
     employee_id: z.string().min(1, 'Employee ID is required'),
     department_id: z.union([
@@ -181,7 +182,10 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
             return;
         }
 
-        const { full_name, email, phone, employee_id, department_id, designation, specialization, qualification, joined_date } = validation.data;
+        const { full_name, email, password, phone, employee_id, department_id, designation, specialization, qualification, joined_date } = validation.data;
+
+        // Generate default password if not provided
+        const userPassword = password || `Prof@${employee_id}`;
 
         // Check if email already exists
         const { data: existingUser } = await supabaseAdmin
@@ -210,7 +214,7 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
         // Create user in Supabase Auth
         const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
             email,
-            password: `Prof@${employee_id}`, // Default password
+            password: userPassword,
             email_confirm: true,
             user_metadata: { full_name, role: 'professor' },
         });
@@ -272,7 +276,7 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
                 employee_id,
                 full_name,
                 email,
-                default_password: `Prof@${employee_id}`,
+                password: userPassword, // Return the password (custom or default)
             },
         });
     } catch (error) {
