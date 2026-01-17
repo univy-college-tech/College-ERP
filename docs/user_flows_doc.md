@@ -107,20 +107,27 @@ The page displays courses as collapsible accordion sections. Each course expands
 3. Fill form:
    - Full Name
    - Email (will be login credential)
+   - **Password** (optional - see note below)
    - Roll Number (unique)
-   - Date of Birth
-   - Gender
+   - Phone
    - Admission Year
-   - Category (General/OBC/SC/ST)
+   - Gender
+   - Date of Birth
 4. Click "Register"
 5. Backend:
    - Creates user in Supabase Auth (role='student')
    - Inserts into `users` table
    - Inserts into `student_profiles` table
-   - Sends welcome email with credentials
-6. Success message + new student appears in list
-7. Student can now login but not assigned to any class yet
+6. Success message shows the **password** (custom or generated)
+7. Student can now login with email + password
 8. Admin must assign student to class via Class Management page
+
+**🔐 Password Rules:**
+- If a custom password is entered, it must be at least 6 characters
+- If left empty, a default password is generated: `Student@{roll_number}`
+  - Example: Roll Number `2024CS001` → Password: `Student@2024CS001`
+- The password is returned in the API response after creation
+- Password field is not shown when editing (cannot change password through edit form)
 
 ---
 
@@ -132,17 +139,29 @@ The page displays courses as collapsible accordion sections. Each course expands
 3. Fill form:
    - Full Name
    - Email
+   - **Password** (optional - see note below)
+   - Phone
    - Employee ID
    - Department (select from dropdown)
    - Designation (Assistant Prof, Associate Prof, etc.)
+   - Qualification
+   - Specialization
    - Joining Date
 4. Click "Add"
 5. Backend:
    - Creates user in Supabase Auth (role='professor')
    - Inserts into `users` table
    - Inserts into `professor_profiles` table
-6. Success message
-7. Professor now available for subject assignment
+6. Success message shows the **password** (custom or generated)
+7. Professor can now login with email + password
+8. Professor now available for subject assignment
+
+**🔐 Password Rules:**
+- If a custom password is entered, it must be at least 6 characters
+- If left empty, a default password is generated: `Prof@{employee_id}`
+  - Example: Employee ID `EMP001` → Password: `Prof@EMP001`
+- The password is returned in the API response after creation
+- Password field is not shown when editing (cannot change password through edit form)
 
 ---
 

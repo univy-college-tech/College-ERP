@@ -54,6 +54,12 @@ A complete college ERP solution with three specialized portals:
 - Designate CRs and class in-charges
 - Global directory search
 
+**🔐 User Password Management:**
+- **Professors**: Custom password or default `Prof@{employee_id}` (e.g., `Prof@EMP001`)
+- **Students**: Custom password or default `Student@{roll_number}` (e.g., `Student@2024CS001`)
+- Passwords are shown in API response after user creation
+- Users can login with email + password to their respective portals
+
 ### Professor Portal
 - Daily class timetable (MS Teams style)
 - Attendance management (10-student pagination UI)
