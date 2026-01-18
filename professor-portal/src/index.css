@@ -3,7 +3,8 @@
 @tailwind utilities;
 
 /* ============================================
-   College ERP - Admin Portal Styles
+   College ERP - Professor Portal Styles
+   (Mobile-First Design)
    ============================================ */
 
 /* Base styles */
@@ -40,6 +41,7 @@
 
 /* Component styles */
 @layer components {
+
   /* Glassmorphism card */
   .glass-card {
     @apply bg-gradient-to-br from-bg-secondary/95 to-bg-tertiary/95;
@@ -155,6 +157,7 @@
 
 /* Utility classes */
 @layer utilities {
+
   /* Hide scrollbar but allow scrolling */
   .scrollbar-hide {
     -ms-overflow-style: none;
@@ -169,4 +172,62 @@
   .text-gradient {
     @apply bg-gradient-primary bg-clip-text text-transparent;
   }
+
+  /* Safe area padding for mobile devices */
+  .safe-area-top {
+    padding-top: env(safe-area-inset-top);
+  }
+
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* Mobile-first animations */
+@keyframes slide-up {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes scale-up {
+  from {
+    transform: scale(0.95);
+    opacity: 0;
+  }
+
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes bounce-subtle {
+
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-2px);
+  }
+}
+
+.animate-slide-up {
+  animation: slide-up 0.3s ease-out;
+}
+
+.animate-scale-up {
+  animation: scale-up 0.2s ease-out;
+}
+
+.animate-bounce-subtle {
+  animation: bounce-subtle 0.5s ease-in-out;
 }

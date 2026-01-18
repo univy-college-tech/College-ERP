@@ -204,6 +204,13 @@ export default function Students() {
         setErrorMessage('');
 
         try {
+            // When editing, exclude password field (empty string fails validation)
+            const submitData = {
+                ...formData,
+                admission_year: parseInt(formData.admission_year),
+                ...(editingStudent && { password: undefined }), // Remove password from update
+            };
+
             const response = await fetch(
                 editingStudent
                     ? `http://localhost:4003/api/admin/v1/students/${editingStudent.id}`
@@ -211,10 +218,7 @@ export default function Students() {
                 {
                     method: editingStudent ? 'PUT' : 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        ...formData,
-                        admission_year: parseInt(formData.admission_year),
-                    }),
+                    body: JSON.stringify(submitData),
                 }
             );
 

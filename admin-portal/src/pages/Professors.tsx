@@ -193,6 +193,11 @@ export default function Professors() {
         setErrorMessage('');
 
         try {
+            // When editing, exclude password field (empty string fails validation)
+            const submitData = editingProfessor
+                ? { ...formData, password: undefined } // Remove password from update
+                : formData; // Include password for create
+
             const response = await fetch(
                 editingProfessor
                     ? `http://localhost:4003/api/admin/v1/professors/${editingProfessor.id}`
@@ -200,7 +205,7 @@ export default function Professors() {
                 {
                     method: editingProfessor ? 'PUT' : 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(formData),
+                    body: JSON.stringify(submitData),
                 }
             );
 

@@ -53,7 +53,7 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
         department_id,
         created_at,
         users!inner(id, full_name, email, phone, is_active),
-        departments:department_id(id, department_name, department_code)
+        departments!professor_profiles_department_id_fkey(id, department_name, department_code)
       `, { count: 'exact' });
 
         // Apply search filter
