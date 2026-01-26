@@ -291,7 +291,7 @@ router.get('/today', async (req: Request, res: Response) => {
                         `)
                         .eq('class_id', classId)
                         .eq('is_active', true)
-                        .eq('representative_type', 'cr')
+                        .eq('representative_type', 'CR')
                         .single();
 
                     if (cr) {

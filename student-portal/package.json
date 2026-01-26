@@ -12,8 +12,6 @@
         "typecheck": "tsc --noEmit"
     },
     "dependencies": {
-        "@college-erp/types": "*",
-        "@college-erp/utils": "*",
         "@supabase/supabase-js": "^2.42.0",
         "@tanstack/react-query": "^5.28.4",
         "lucide-react": "^0.356.0",

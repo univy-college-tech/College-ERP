@@ -11,6 +11,21 @@ const router = Router();
 // POST /api/academic/v1/marks/components
 // Create assessment component
 // ============================================
+
+// Valid component types in database
+const VALID_COMPONENT_TYPES = ['internal', 'midterm', 'assignment', 'quiz', 'lab', 'project', 'external'];
+
+// Map common frontend types to valid database types
+const COMPONENT_TYPE_MAP: Record<string, string> = {
+    'minor': 'internal',
+    'major': 'midterm',
+    'minor1': 'internal',
+    'minor2': 'internal',
+    'practical': 'lab',
+    'test': 'quiz',
+    'exam': 'external',
+};
+
 router.post('/components', async (req: Request, res: Response) => {
     try {
         const {
@@ -29,6 +44,12 @@ router.post('/components', async (req: Request, res: Response) => {
             return;
         }
 
+        // Map component_type to valid database value
+        let validType = component_type?.toLowerCase() || 'assignment';
+        if (!VALID_COMPONENT_TYPES.includes(validType)) {
+            validType = COMPONENT_TYPE_MAP[validType] || 'assignment';
+        }
+
         // Create component
         const { data, error } = await supabaseAdmin
             .from('assessment_components')
@@ -37,7 +58,7 @@ router.post('/components', async (req: Request, res: Response) => {
                 component_name,
                 max_marks,
                 weightage: weightage || 0,
-                component_type: component_type || 'assignment',
+                component_type: validType,
             })
             .select()
             .single();
@@ -224,7 +245,7 @@ router.post('/', async (req: Request, res: Response) => {
             const { data: existing } = await supabaseAdmin
                 .from('student_marks')
                 .select('id')
-                .eq('component_id', component_id)
+                .eq('assessment_component_id', component_id)
                 .eq('student_id', mark.student_id)
                 .single();
 
@@ -234,7 +255,7 @@ router.post('/', async (req: Request, res: Response) => {
                     .from('student_marks')
                     .update({
                         marks_obtained: mark.marks_obtained,
-                        updated_at: new Date().toISOString()
+                        entered_at: new Date().toISOString()
                     })
                     .eq('id', existing.id);
 
@@ -245,12 +266,15 @@ router.post('/', async (req: Request, res: Response) => {
                 const { error } = await supabaseAdmin
                     .from('student_marks')
                     .insert({
-                        component_id,
+                        assessment_component_id: component_id,
                         student_id: mark.student_id,
                         marks_obtained: mark.marks_obtained,
                     });
 
-                if (error) errorCount++;
+                if (error) {
+                    console.error('Error inserting mark:', error);
+                    errorCount++;
+                }
                 else successCount++;
             }
         }
@@ -326,8 +350,8 @@ router.get('/component/:componentId', async (req: Request, res: Response) => {
         // Get marks for this component
         const { data: marks, error: marksError } = await supabaseAdmin
             .from('student_marks')
-            .select('student_id, marks_obtained, updated_at')
-            .eq('component_id', componentId);
+            .select('student_id, marks_obtained, entered_at')
+            .eq('assessment_component_id', componentId);
 
         if (marksError) {
             console.error('Error fetching marks:', marksError);
@@ -337,13 +361,15 @@ router.get('/component/:componentId', async (req: Request, res: Response) => {
         const marksMap = new Map((marks || []).map((m: any) => [m.student_id, m]));
 
         const studentsWithMarks = (classStudents || []).map((s: any) => {
-            const mark = marksMap.get(s.student_id);
+            // student_id in class_students is actually the student profile id
+            const studentProfileId = s.student_profiles?.id;
+            const mark = marksMap.get(studentProfileId);
             return {
-                student_id: s.student_id,
+                student_id: studentProfileId,
                 roll_number: s.student_profiles?.roll_number,
                 full_name: s.student_profiles?.users?.full_name,
                 marks_obtained: mark?.marks_obtained ?? null,
-                last_updated: mark?.updated_at ?? null,
+                last_updated: mark?.entered_at ?? null,
                 status: mark ? 'saved' : 'pending',
             };
         });
@@ -475,18 +501,17 @@ router.get('/my', async (req: Request, res: Response) => {
             const { data: components } = await supabaseAdmin
                 .from('assessment_components')
                 .select('id, component_name, max_marks')
-                .eq('class_subject_id', cs.id)
-                .eq('is_active', true);
+                .eq('class_subject_id', cs.id);
 
             // Get student's marks for these components
             const componentIds = (components || []).map((c: any) => c.id);
             const { data: marks } = await supabaseAdmin
                 .from('student_marks')
-                .select('component_id, marks_obtained')
+                .select('assessment_component_id, marks_obtained')
                 .eq('student_id', student.id)
-                .in('component_id', componentIds.length > 0 ? componentIds : ['00000000-0000-0000-0000-000000000000']);
+                .in('assessment_component_id', componentIds.length > 0 ? componentIds : ['00000000-0000-0000-0000-000000000000']);
 
-            const marksMap = new Map((marks || []).map((m: any) => [m.component_id, m.marks_obtained]));
+            const marksMap = new Map((marks || []).map((m: any) => [m.assessment_component_id, m.marks_obtained]));
 
             const componentsWithMarks = (components || []).map((c: any) => ({
                 id: c.id,
@@ -501,12 +526,18 @@ router.get('/my', async (req: Request, res: Response) => {
             const totalMax = componentsWithMarks.reduce((sum, c) => sum + c.max_marks, 0);
             const totalObtained = componentsWithMarks.reduce((sum, c) => sum + (c.obtained || 0), 0);
 
+            // Handle potential array types from Supabase
+            const subjectData = Array.isArray(cs.subjects) ? cs.subjects[0] : cs.subjects;
+            const profData = Array.isArray(cs.professor_profiles) ? cs.professor_profiles[0] : cs.professor_profiles;
+            const userData = profData?.users;
+            const userInfo = Array.isArray(userData) ? userData[0] : userData;
+
             return {
                 class_subject_id: cs.id,
-                subject_id: cs.subjects?.id,
-                subject_name: cs.subjects?.subject_name,
-                subject_code: cs.subjects?.subject_code,
-                professor_name: cs.professor_profiles?.users?.full_name,
+                subject_id: subjectData?.id,
+                subject_name: subjectData?.subject_name,
+                subject_code: subjectData?.subject_code,
+                professor_name: userInfo?.full_name,
                 components: componentsWithMarks,
                 total_max: totalMax,
                 total_obtained: totalObtained,
@@ -578,17 +609,16 @@ router.get('/my/:classSubjectId', async (req: Request, res: Response) => {
                 created_at
             `)
             .eq('class_subject_id', classSubjectId)
-            .eq('is_active', true)
             .order('created_at');
 
         const componentIds = (components || []).map((c: any) => c.id);
         const { data: marks } = await supabaseAdmin
             .from('student_marks')
-            .select('component_id, marks_obtained, updated_at')
+            .select('assessment_component_id, marks_obtained, entered_at')
             .eq('student_id', student.id)
-            .in('component_id', componentIds.length > 0 ? componentIds : ['00000000-0000-0000-0000-000000000000']);
+            .in('assessment_component_id', componentIds.length > 0 ? componentIds : ['00000000-0000-0000-0000-000000000000']);
 
-        const marksMap = new Map((marks || []).map((m: any) => [m.component_id, m]));
+        const marksMap = new Map((marks || []).map((m: any) => [m.assessment_component_id, m]));
 
         const componentsWithMarks = (components || []).map((c: any) => {
             const mark = marksMap.get(c.id);
@@ -602,16 +632,22 @@ router.get('/my/:classSubjectId', async (req: Request, res: Response) => {
                 percentage: mark?.marks_obtained !== undefined
                     ? Math.round((mark.marks_obtained / c.max_marks) * 100)
                     : null,
-                updated_at: mark?.updated_at ?? null,
+                updated_at: mark?.entered_at ?? null,
             };
         });
+
+        // Handle potential array types from Supabase
+        const subjectData = Array.isArray(classSubject.subjects) ? classSubject.subjects[0] : classSubject.subjects;
+        const profData = Array.isArray(classSubject.professor_profiles) ? classSubject.professor_profiles[0] : classSubject.professor_profiles;
+        const userData = profData?.users;
+        const userInfo = Array.isArray(userData) ? userData[0] : userData;
 
         res.json({
             success: true,
             data: {
-                subject_name: classSubject.subjects?.subject_name,
-                subject_code: classSubject.subjects?.subject_code,
-                professor_name: classSubject.professor_profiles?.users?.full_name,
+                subject_name: subjectData?.subject_name,
+                subject_code: subjectData?.subject_code,
+                professor_name: userInfo?.full_name,
                 components: componentsWithMarks,
             }
         });
@@ -681,15 +717,15 @@ router.get('/class-subject/:classSubjectId', async (req: Request, res: Response)
         const componentIds = (components || []).map((c: any) => c.id);
         const { data: allMarks } = await supabaseAdmin
             .from('student_marks')
-            .select('student_id, component_id, marks_obtained')
-            .in('component_id', componentIds.length > 0 ? componentIds : ['00000000-0000-0000-0000-000000000000']);
+            .select('student_id, assessment_component_id, marks_obtained')
+            .in('assessment_component_id', componentIds.length > 0 ? componentIds : ['00000000-0000-0000-0000-000000000000']);
 
         // Build marks table
         const marksTable = (students || []).map((s: any) => {
             const studentMarks: Record<string, number | null> = {};
             (components || []).forEach((c: any) => {
                 const mark = (allMarks || []).find(
-                    (m: any) => m.student_id === s.student_id && m.component_id === c.id
+                    (m: any) => m.student_id === s.student_id && m.assessment_component_id === c.id
                 );
                 studentMarks[c.id] = mark?.marks_obtained ?? null;
             });

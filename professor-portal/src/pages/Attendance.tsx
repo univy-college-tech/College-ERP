@@ -35,6 +35,8 @@ interface Student {
 interface AttendanceRecord {
     student_id: string;
     status: 'present' | 'absent' | 'late' | 'leave';
+    roll_number?: string;
+    full_name?: string;
 }
 
 // ============================================
@@ -43,12 +45,52 @@ interface AttendanceRecord {
 const API_BASE = import.meta.env.VITE_ACADEMIC_API_URL || 'http://localhost:4002/api/academic/v1';
 
 // ============================================
+// Types for Stats
+// ============================================
+interface AttendanceSession {
+    id: string;
+    conducted_date: string;
+    conducted_time: string;
+    total_present: number;
+    total_absent: number;
+    is_finalized: boolean;
+}
+
+interface StudentStat {
+    student_id: string;
+    roll_number: string;
+    full_name: string;
+    classes_attended: number;
+    classes_absent: number;
+    total_classes: number;
+    percentage: number;
+    status: 'good' | 'warning' | 'danger';
+}
+
+interface AttendanceStatsData {
+    class_subject_id: string;
+    subject_name: string;
+    subject_code: string;
+    class_label: string;
+    stats: {
+        total_sessions: number;
+        total_students: number;
+        average_percentage: number;
+        sessions_today: number;
+    };
+    sessions: AttendanceSession[];
+    students: StudentStat[];
+}
+
+// ============================================
 // Class Selection Component
 // ============================================
 function ClassSelection({
-    onSelect
+    onSelect,
+    onViewStats
 }: {
-    onSelect: (cls: AssignedClass) => void
+    onSelect: (cls: AssignedClass) => void;
+    onViewStats: (cls: AssignedClass) => void;
 }) {
     const { user } = useAuth();
     const [classes, setClasses] = useState<AssignedClass[]>([]);
@@ -117,9 +159,23 @@ function ClassSelection({
                                 <span>{cls.student_count} students</span>
                             </div>
                         </div>
-                        <svg className="w-5 h-5 text-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                        </svg>
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    onViewStats(cls);
+                                }}
+                                className="p-2 rounded-lg bg-bg-tertiary hover:bg-primary/20 text-text-muted hover:text-primary transition-colors"
+                                title="View History & Stats"
+                            >
+                                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                                </svg>
+                            </button>
+                            <svg className="w-5 h-5 text-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                            </svg>
+                        </div>
                     </div>
                 </Card>
             ))}
@@ -183,15 +239,34 @@ function AttendanceMarking({ classSubject, date, onComplete, onBack }: Attendanc
         setAttendance(new Map(attendance.set(studentId, status)));
     };
 
+    // Create a map of student info for lookup
+    const [studentInfo, setStudentInfo] = useState<Map<string, { roll_number: string; full_name: string }>>(new Map());
+
+    // Store student info when page loads
+    useEffect(() => {
+        if (students.length > 0) {
+            const newInfo = new Map(studentInfo);
+            students.forEach((s: Student) => {
+                newInfo.set(s.student_id, { roll_number: s.roll_number, full_name: s.full_name });
+            });
+            setStudentInfo(newInfo);
+        }
+    }, [students]);
+
     const handleNext = () => {
         if (currentPage < totalPages) {
             setCurrentPage(currentPage + 1);
         } else {
-            // Convert to array and complete
-            const records: AttendanceRecord[] = Array.from(attendance.entries()).map(([student_id, status]) => ({
-                student_id,
-                status,
-            }));
+            // Convert to array and complete - include student names
+            const records: AttendanceRecord[] = Array.from(attendance.entries()).map(([student_id, status]) => {
+                const info = studentInfo.get(student_id);
+                return {
+                    student_id,
+                    status,
+                    roll_number: info?.roll_number,
+                    full_name: info?.full_name,
+                };
+            });
             onComplete(records);
         }
     };
@@ -409,7 +484,9 @@ function AttendanceSummary({ classSubject, date, records, onEdit, onSubmit, subm
                                     <span className="w-6 h-6 rounded-full bg-error/20 flex items-center justify-center text-error text-xs">
                                         {i + 1}
                                     </span>
-                                    <span className="text-text-primary">{r.student_id}</span>
+                                    <span className="text-text-primary font-medium">{r.roll_number || 'N/A'}</span>
+                                    <span className="text-text-secondary">-</span>
+                                    <span className="text-text-primary">{r.full_name || 'Unknown'}</span>
                                 </div>
                             ))}
                         </div>
@@ -441,6 +518,204 @@ function AttendanceSummary({ classSubject, date, records, onEdit, onSubmit, subm
 }
 
 // ============================================
+// Attendance Stats Component
+// ============================================
+interface AttendanceStatsProps {
+    classSubject: AssignedClass;
+    onBack: () => void;
+    onTakeAttendance: () => void;
+}
+
+function AttendanceStats({ classSubject, onBack, onTakeAttendance }: AttendanceStatsProps) {
+    const [loading, setLoading] = useState(true);
+    const [statsData, setStatsData] = useState<AttendanceStatsData | null>(null);
+    const [activeTab, setActiveTab] = useState<'students' | 'sessions'>('students');
+
+    useEffect(() => {
+        fetchStats();
+    }, [classSubject]);
+
+    const fetchStats = async () => {
+        try {
+            const response = await fetch(
+                `${API_BASE}/attendance/class-subject/${classSubject.class_subject_id}/stats`
+            );
+            const data = await response.json();
+            if (data.success) {
+                setStatsData(data.data);
+            }
+        } catch (err) {
+            console.error('Error fetching stats:', err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    if (loading) {
+        return (
+            <div className="flex items-center justify-center py-12">
+                <LoadingSpinner />
+            </div>
+        );
+    }
+
+    if (!statsData) {
+        return (
+            <EmptyState
+                icon={
+                    <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                }
+                title="No data available"
+                description="Start taking attendance to see statistics."
+            />
+        );
+    }
+
+    const getStatusColor = (status: string) => {
+        switch (status) {
+            case 'good': return 'text-success bg-success/10';
+            case 'warning': return 'text-warning bg-warning/10';
+            case 'danger': return 'text-error bg-error/10';
+            default: return 'text-text-muted bg-bg-tertiary';
+        }
+    };
+
+    return (
+        <div>
+            {/* Header */}
+            <Card className="mb-4">
+                <div className="flex items-center justify-between">
+                    <div>
+                        <h3 className="font-semibold text-text-primary">{statsData.subject_name}</h3>
+                        <p className="text-sm text-text-secondary">{statsData.class_label}</p>
+                    </div>
+                    <Button variant="primary" onClick={onTakeAttendance}>
+                        Take Attendance
+                    </Button>
+                </div>
+            </Card>
+
+            {/* Overall Stats */}
+            <div className="grid grid-cols-2 gap-3 mb-4">
+                <Card className="text-center">
+                    <p className="text-2xl font-bold text-primary">{statsData.stats.total_sessions}</p>
+                    <p className="text-xs text-text-muted">Classes Held</p>
+                </Card>
+                <Card className="text-center">
+                    <p className="text-2xl font-bold text-text-primary">{statsData.stats.total_students}</p>
+                    <p className="text-xs text-text-muted">Students</p>
+                </Card>
+                <Card className="col-span-2 text-center">
+                    <p className={`text-3xl font-bold ${statsData.stats.average_percentage >= 75 ? 'text-success' : statsData.stats.average_percentage >= 65 ? 'text-warning' : 'text-error'}`}>
+                        {statsData.stats.average_percentage}%
+                    </p>
+                    <p className="text-xs text-text-muted">Average Attendance</p>
+                </Card>
+            </div>
+
+            {/* Tabs */}
+            <div className="flex gap-2 mb-4">
+                <button
+                    onClick={() => setActiveTab('students')}
+                    className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors ${activeTab === 'students'
+                        ? 'bg-primary text-white'
+                        : 'bg-bg-tertiary text-text-secondary hover:bg-bg-secondary'
+                        }`}
+                >
+                    Students ({statsData.students.length})
+                </button>
+                <button
+                    onClick={() => setActiveTab('sessions')}
+                    className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors ${activeTab === 'sessions'
+                        ? 'bg-primary text-white'
+                        : 'bg-bg-tertiary text-text-secondary hover:bg-bg-secondary'
+                        }`}
+                >
+                    Sessions ({statsData.sessions.length})
+                </button>
+            </div>
+
+            {/* Students Tab */}
+            {activeTab === 'students' && (
+                <div className="space-y-2">
+                    {statsData.students.length === 0 ? (
+                        <Card className="text-center py-8">
+                            <p className="text-text-muted">No attendance data yet</p>
+                        </Card>
+                    ) : (
+                        statsData.students.map((student) => (
+                            <Card key={student.student_id} className="flex items-center justify-between">
+                                <div className="flex-1 min-w-0">
+                                    <p className="font-medium text-text-primary truncate">{student.full_name}</p>
+                                    <p className="text-xs text-text-muted">{student.roll_number}</p>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    <div className="text-right">
+                                        <p className="text-xs text-text-muted">
+                                            {student.classes_attended}/{student.total_classes}
+                                        </p>
+                                    </div>
+                                    <span className={`px-2 py-1 rounded-lg text-sm font-bold ${getStatusColor(student.status)}`}>
+                                        {student.percentage}%
+                                    </span>
+                                </div>
+                            </Card>
+                        ))
+                    )}
+                </div>
+            )}
+
+            {/* Sessions Tab */}
+            {activeTab === 'sessions' && (
+                <div className="space-y-2">
+                    {statsData.sessions.length === 0 ? (
+                        <Card className="text-center py-8">
+                            <p className="text-text-muted">No sessions taken yet</p>
+                        </Card>
+                    ) : (
+                        statsData.sessions.map((session) => (
+                            <Card key={session.id} className="flex items-center justify-between">
+                                <div>
+                                    <p className="font-medium text-text-primary">
+                                        {new Date(session.conducted_date).toLocaleDateString('en-US', {
+                                            weekday: 'short',
+                                            month: 'short',
+                                            day: 'numeric',
+                                        })}
+                                    </p>
+                                    <p className="text-xs text-text-muted">
+                                        {session.conducted_time?.slice(0, 5) || 'N/A'}
+                                    </p>
+                                </div>
+                                <div className="flex items-center gap-4">
+                                    <div className="text-center">
+                                        <p className="text-sm font-bold text-success">{session.total_present || 0}</p>
+                                        <p className="text-xs text-text-muted">Present</p>
+                                    </div>
+                                    <div className="text-center">
+                                        <p className="text-sm font-bold text-error">{session.total_absent || 0}</p>
+                                        <p className="text-xs text-text-muted">Absent</p>
+                                    </div>
+                                </div>
+                            </Card>
+                        ))
+                    )}
+                </div>
+            )}
+
+            {/* Back Button */}
+            <div className="mt-6">
+                <Button variant="secondary" onClick={onBack} className="w-full">
+                    Back to Classes
+                </Button>
+            </div>
+        </div>
+    );
+}
+
+// ============================================
 // Main Attendance Component
 // ============================================
 export default function Attendance() {
@@ -449,7 +724,7 @@ export default function Attendance() {
     const location = useLocation();
     useParams(); // Can be used for direct URL access in the future
 
-    const [step, setStep] = useState<'select' | 'mark' | 'summary'>('select');
+    const [step, setStep] = useState<'select' | 'mark' | 'summary' | 'stats'>('select');
     const [selectedClass, setSelectedClass] = useState<AssignedClass | null>(null);
     const [attendanceDate, setAttendanceDate] = useState(new Date().toISOString().split('T')[0] ?? '');
     const [records, setRecords] = useState<AttendanceRecord[]>([]);
@@ -468,6 +743,11 @@ export default function Attendance() {
     const handleClassSelect = (cls: AssignedClass) => {
         setSelectedClass(cls);
         setStep('mark');
+    };
+
+    const handleViewStats = (cls: AssignedClass) => {
+        setSelectedClass(cls);
+        setStep('stats');
     };
 
     const handleMarkingComplete = (newRecords: AttendanceRecord[]) => {
@@ -534,11 +814,11 @@ export default function Attendance() {
         <PageContainer
             header={
                 <Header
-                    title={step === 'select' ? 'Take Attendance' : selectedClass?.subject_name || 'Attendance'}
+                    title={step === 'select' ? 'Take Attendance' : step === 'stats' ? 'Attendance Stats' : selectedClass?.subject_name || 'Attendance'}
                     showBack={step !== 'select'}
                     onBack={() => {
                         if (step === 'summary') setStep('mark');
-                        else if (step === 'mark') {
+                        else if (step === 'mark' || step === 'stats') {
                             setSelectedClass(null);
                             setStep('select');
                         }
@@ -548,7 +828,7 @@ export default function Attendance() {
             }
         >
             {step === 'select' && (
-                <ClassSelection onSelect={handleClassSelect} />
+                <ClassSelection onSelect={handleClassSelect} onViewStats={handleViewStats} />
             )}
 
             {step === 'mark' && selectedClass && (
@@ -571,6 +851,17 @@ export default function Attendance() {
                     onEdit={handleEdit}
                     onSubmit={handleSubmit}
                     submitting={submitting}
+                />
+            )}
+
+            {step === 'stats' && selectedClass && (
+                <AttendanceStats
+                    classSubject={selectedClass}
+                    onBack={() => {
+                        setSelectedClass(null);
+                        setStep('select');
+                    }}
+                    onTakeAttendance={() => setStep('mark')}
                 />
             )}
         </PageContainer>

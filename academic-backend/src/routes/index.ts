@@ -6,6 +6,7 @@ import marksRoutes from './marks.routes';
 import groupRoutes from './group.routes';
 import notificationRoutes from './notification.routes';
 import professorRoutes from './professor.routes';
+import studentRoutes from './student.routes';
 
 const router = Router();
 
@@ -16,5 +17,6 @@ router.use('/marks', marksRoutes);
 router.use('/groups', groupRoutes);
 router.use('/notifications', notificationRoutes);
 router.use('/professor', professorRoutes);
+router.use('/student', studentRoutes);
 
 export default router;

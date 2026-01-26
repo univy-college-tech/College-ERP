@@ -1081,11 +1081,31 @@ function CRTab({ classId, currentCR }: { classId: string; currentCR?: { id: stri
     }, [classId]);
 
     const handleSave = async () => {
+        if (!selectedStudent) return;
         setSaving(true);
-        // API call would go here
-        await new Promise((r) => setTimeout(r, 1000));
-        setSaving(false);
-        alert('CR updated successfully!');
+        try {
+            const response = await fetch(`http://localhost:4003/api/admin/v1/academic/classes/${classId}/representatives`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    student_id: selectedStudent,
+                    representative_type: 'CR'
+                })
+            });
+            if (response.ok) {
+                alert('CR updated successfully!');
+                // Reload the page to show updated data
+                window.location.reload();
+            } else {
+                const error = await response.json();
+                alert(`Error: ${error.message || 'Failed to update CR'}`);
+            }
+        } catch (error) {
+            console.error('Error saving CR:', error);
+            alert('Failed to update CR');
+        } finally {
+            setSaving(false);
+        }
     };
 
     return (
@@ -1166,11 +1186,30 @@ function InChargeTab({ classId, currentInCharge }: { classId: string; currentInC
     }, [classId]);
 
     const handleSave = async () => {
+        if (!selectedProfessor) return;
         setSaving(true);
-        // API call would go here
-        await new Promise((r) => setTimeout(r, 1000));
-        setSaving(false);
-        alert('Class In-Charge updated successfully!');
+        try {
+            const response = await fetch(`http://localhost:4003/api/admin/v1/academic/classes/${classId}/teacher`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    professor_id: selectedProfessor
+                })
+            });
+            if (response.ok) {
+                alert('Class In-Charge updated successfully!');
+                // Reload the page to show updated data
+                window.location.reload();
+            } else {
+                const error = await response.json();
+                alert(`Error: ${error.message || 'Failed to update In-Charge'}`);
+            }
+        } catch (error) {
+            console.error('Error saving In-Charge:', error);
+            alert('Failed to update In-Charge');
+        } finally {
+            setSaving(false);
+        }
     };
 
     return (
@@ -1286,17 +1325,32 @@ export default function ClassManagement() {
             }
 
             try {
+                // Fetch class with class teacher info
                 const { data, error } = await supabase
                     .from('classes')
                     .select(`
                         *,
                         batches(id, batch_name, batch_year),
-                        branches(id, branch_name, branch_code, course_id, courses(id, course_name, course_code))
+                        branches(id, branch_name, branch_code, course_id, courses(id, course_name, course_code)),
+                        professor_profiles:class_teacher_id(id, users(full_name))
                     `)
                     .eq('id', classId)
                     .single();
 
                 if (error) throw error;
+
+                // Fetch class representative (CR)
+                const { data: crData } = await supabase
+                    .from('class_representatives')
+                    .select(`
+                        id,
+                        student_id,
+                        student_profiles(id, users(full_name))
+                    `)
+                    .eq('class_id', classId)
+                    .eq('representative_type', 'CR')
+                    .eq('is_active', true)
+                    .single();
 
                 setClassInfo({
                     id: data.id,
@@ -1312,6 +1366,9 @@ export default function ClassManagement() {
                     course_code: data.branches?.courses?.course_code || '',
                     current_strength: data.current_strength || 0,
                     class_teacher_id: data.class_teacher_id,
+                    class_incharge_name: (data.professor_profiles as any)?.users?.full_name,
+                    class_representative_id: crData?.student_id,
+                    class_representative_name: (crData?.student_profiles as any)?.users?.full_name,
                     is_active: data.is_active,
                 });
             } catch (error) {

@@ -81,7 +81,7 @@ router.get('/', async (req: Request, res: Response) => {
                     `)
                     .eq('class_id', cs.classes?.id)
                     .eq('is_active', true)
-                    .eq('representative_type', 'cr')
+                    .eq('representative_type', 'CR')
                     .single();
 
                 if (cr) {
@@ -297,6 +297,31 @@ router.get('/:groupId/messages', async (req: Request, res: Response) => {
         const limit = parseInt(req.query.limit as string) || 50;
         const offset = (page - 1) * limit;
 
+        // First try to find the actual group ID
+        // The groupId could be either an actual group.id or a class_subject_id
+        let actualGroupId = groupId;
+
+        // Check if group exists directly
+        const { data: directGroup } = await supabaseAdmin
+            .from('groups')
+            .select('id')
+            .eq('id', groupId)
+            .single();
+
+        if (!directGroup) {
+            // Try to find group by class_subject_id
+            const { data: groupByClassSubject } = await supabaseAdmin
+                .from('groups')
+                .select('id')
+                .eq('class_subject_id', groupId)
+                .single();
+
+            if (groupByClassSubject) {
+                actualGroupId = groupByClassSubject.id;
+            }
+            // If still no group found, there are simply no messages yet
+        }
+
         const { data: messages, count, error } = await supabaseAdmin
             .from('group_messages')
             .select(`
@@ -310,7 +335,7 @@ router.get('/:groupId/messages', async (req: Request, res: Response) => {
                     role
                 )
             `, { count: 'exact' })
-            .eq('group_id', groupId)
+            .eq('group_id', actualGroupId)
             .order('sent_at', { ascending: false })
             .range(offset, offset + limit - 1);
 
@@ -523,7 +548,7 @@ router.get('/:groupId/members', async (req: Request, res: Response) => {
             .select('student_id')
             .eq('class_id', classId)
             .eq('is_active', true)
-            .eq('representative_type', 'cr')
+            .eq('representative_type', 'CR')
             .single();
 
         // Get professor if available
@@ -638,7 +663,7 @@ router.get('/crs/my-classes', async (req: Request, res: Response) => {
                 `)
                 .eq('class_id', cls.id)
                 .eq('is_active', true)
-                .eq('representative_type', 'cr')
+                .eq('representative_type', 'CR')
                 .single();
 
             return {

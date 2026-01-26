@@ -47,24 +47,65 @@ router.post('/', async (req: Request, res: Response) => {
         const conductedDate = conducted_date || new Date().toISOString().split('T')[0];
         const conductedTime = conducted_time || new Date().toTimeString().slice(0, 8);
 
-        const { data: session, error: sessionError } = await supabaseAdmin
+        // Check if session already exists for this date
+        const { data: existingSession } = await supabaseAdmin
             .from('attendance_sessions')
-            .insert({
-                class_subject_id,
-                conducted_date: conductedDate,
-                conducted_time: conductedTime,
-                recorded_by: classSubject.professor_id,
-                total_present: 0,
-                total_absent: 0,
-                is_finalized: false,
-            })
-            .select()
+            .select('id')
+            .eq('class_subject_id', class_subject_id)
+            .eq('conducted_date', conductedDate)
             .single();
 
-        if (sessionError) {
-            console.error('Error creating attendance session:', sessionError);
-            res.status(500).json({ success: false, message: 'Failed to create attendance session', error: sessionError.message });
-            return;
+        let session;
+        let isNewSession = false;
+
+        if (existingSession) {
+            // Session exists - delete old records and update
+            await supabaseAdmin
+                .from('attendance_records')
+                .delete()
+                .eq('session_id', existingSession.id);
+
+            const { data: updatedSession, error: updateError } = await supabaseAdmin
+                .from('attendance_sessions')
+                .update({
+                    conducted_time: conductedTime,
+                    recorded_by: classSubject.professor_id,
+                    total_present: 0,
+                    total_absent: 0,
+                })
+                .eq('id', existingSession.id)
+                .select()
+                .single();
+
+            if (updateError) {
+                console.error('Error updating attendance session:', updateError);
+                res.status(500).json({ success: false, message: 'Failed to update attendance session' });
+                return;
+            }
+            session = updatedSession;
+        } else {
+            // Create new session
+            const { data: newSession, error: sessionError } = await supabaseAdmin
+                .from('attendance_sessions')
+                .insert({
+                    class_subject_id,
+                    conducted_date: conductedDate,
+                    conducted_time: conductedTime,
+                    recorded_by: classSubject.professor_id,
+                    total_present: 0,
+                    total_absent: 0,
+                    is_finalized: false,
+                })
+                .select()
+                .single();
+
+            if (sessionError) {
+                console.error('Error creating attendance session:', sessionError);
+                res.status(500).json({ success: false, message: 'Failed to create attendance session', error: sessionError.message });
+                return;
+            }
+            session = newSession;
+            isNewSession = true;
         }
 
         // Insert attendance records
@@ -79,23 +120,27 @@ router.post('/', async (req: Request, res: Response) => {
             .insert(recordsToInsert);
 
         if (recordsError) {
-            // Rollback session
-            await supabaseAdmin.from('attendance_sessions').delete().eq('id', session.id);
+            // Rollback session if new
+            if (isNewSession) {
+                await supabaseAdmin.from('attendance_sessions').delete().eq('id', session.id);
+            }
             console.error('Error creating attendance records:', recordsError);
             res.status(500).json({ success: false, message: 'Failed to save attendance records' });
             return;
         }
 
-        // Update total_classes_conducted in class_subjects
-        const { error: updateError } = await supabaseAdmin
-            .from('class_subjects')
-            .update({
-                total_classes_conducted: (classSubject.total_classes_conducted || 0) + 1
-            })
-            .eq('id', class_subject_id);
+        // Update total_classes_conducted ONLY for new sessions (not when updating existing)
+        if (isNewSession) {
+            const { error: updateError } = await supabaseAdmin
+                .from('class_subjects')
+                .update({
+                    total_classes_conducted: (classSubject.total_classes_conducted || 0) + 1
+                })
+                .eq('id', class_subject_id);
 
-        if (updateError) {
-            console.error('Error updating class count:', updateError);
+            if (updateError) {
+                console.error('Error updating class count:', updateError);
+            }
         }
 
         // Calculate summary
@@ -105,7 +150,7 @@ router.post('/', async (req: Request, res: Response) => {
 
         res.status(201).json({
             success: true,
-            message: 'Attendance recorded successfully',
+            message: isNewSession ? 'Attendance recorded successfully' : 'Attendance updated successfully',
             data: {
                 session_id: session.id,
                 class_subject_id,
@@ -113,7 +158,7 @@ router.post('/', async (req: Request, res: Response) => {
                 present: presentCount,
                 absent: absentCount,
                 late: lateCount,
-                total_classes_conducted: (classSubject.total_classes_conducted || 0) + 1,
+                total_classes_conducted: (classSubject.total_classes_conducted || 0) + (isNewSession ? 1 : 0),
             }
         });
     } catch (error) {
@@ -388,12 +433,18 @@ router.get('/my', async (req: Request, res: Response) => {
             const attended = records?.filter((r: any) => r.status === 'present' || r.status === 'late').length || 0;
             const percentage = totalClasses > 0 ? Math.round((attended / totalClasses) * 100) : 0;
 
+            // Handle potential array types from Supabase
+            const subjectData = Array.isArray(cs.subjects) ? cs.subjects[0] : cs.subjects;
+            const profData = Array.isArray(cs.professor_profiles) ? cs.professor_profiles[0] : cs.professor_profiles;
+            const userData = profData?.users;
+            const userInfo = Array.isArray(userData) ? userData[0] : userData;
+
             return {
                 class_subject_id: cs.id,
-                subject_id: cs.subjects?.id,
-                subject_name: cs.subjects?.subject_name,
-                subject_code: cs.subjects?.subject_code,
-                professor_name: cs.professor_profiles?.users?.full_name,
+                subject_id: subjectData?.id,
+                subject_name: subjectData?.subject_name,
+                subject_code: subjectData?.subject_code,
+                professor_name: userInfo?.full_name,
                 total_classes: totalClasses,
                 attended,
                 percentage,
@@ -468,36 +519,47 @@ router.get('/my/:classSubjectId', async (req: Request, res: Response) => {
         }
 
         // Get all sessions and student's records
-        const { data: sessions } = await supabaseAdmin
+        const { data: sessions, error: sessionsError } = await supabaseAdmin
             .from('attendance_sessions')
             .select(`
                 id,
-                conducted_at,
-                session_type,
+                conducted_date,
+                conducted_time,
                 attendance_records (
+                    student_id,
                     status
                 )
             `)
             .eq('class_subject_id', classSubjectId)
-            .order('conducted_at', { ascending: false });
+            .order('conducted_date', { ascending: false });
+
+        if (sessionsError) {
+            console.error('Error fetching sessions:', sessionsError);
+        }
 
         // Filter to get student's attendance per session
         const attendanceHistory = (sessions || []).map((session: any) => {
-            const studentRecord = session.attendance_records?.find((r: any) => true); // Would filter by student_id in proper query
+            const studentRecord = session.attendance_records?.find((r: any) => r.student_id === student.id);
             return {
                 session_id: session.id,
-                date: session.conducted_at,
-                session_type: session.session_type,
-                status: studentRecord?.status || 'absent',
+                date: session.conducted_date,
+                time: session.conducted_time,
+                status: studentRecord?.status || 'not_marked',
             };
         });
+
+        // Handle potential array types from Supabase
+        const subjectData = Array.isArray(classSubject.subjects) ? classSubject.subjects[0] : classSubject.subjects;
+        const profData = Array.isArray(classSubject.professor_profiles) ? classSubject.professor_profiles[0] : classSubject.professor_profiles;
+        const userData = profData?.users;
+        const userInfo = Array.isArray(userData) ? userData[0] : userData;
 
         res.json({
             success: true,
             data: {
-                subject_name: classSubject.subjects?.subject_name,
-                subject_code: classSubject.subjects?.subject_code,
-                professor_name: classSubject.professor_profiles?.users?.full_name,
+                subject_name: subjectData?.subject_name,
+                subject_code: subjectData?.subject_code,
+                professor_name: userInfo?.full_name,
                 total_classes: classSubject.total_classes_conducted || 0,
                 history: attendanceHistory,
             }
@@ -580,6 +642,143 @@ router.get('/students', async (req: Request, res: Response) => {
         });
     } catch (error) {
         console.error('Error in GET /attendance/students:', error);
+        res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+});
+
+// ============================================
+// GET /api/academic/v1/attendance/class-subject/:classSubjectId/stats
+// Get attendance statistics for a class-subject (for professor view)
+// ============================================
+router.get('/class-subject/:classSubjectId/stats', async (req: Request, res: Response) => {
+    try {
+        const { classSubjectId } = req.params;
+
+        // Get class subject info
+        const { data: classSubject, error: csError } = await supabaseAdmin
+            .from('class_subjects')
+            .select(`
+                id,
+                class_id,
+                total_classes_conducted,
+                subjects (subject_name, subject_code),
+                classes (class_label)
+            `)
+            .eq('id', classSubjectId)
+            .single();
+
+        if (csError || !classSubject) {
+            res.status(404).json({ success: false, message: 'Class subject not found' });
+            return;
+        }
+
+        // Get all attendance sessions for this class-subject
+        const { data: sessions, error: sessionsError } = await supabaseAdmin
+            .from('attendance_sessions')
+            .select('id, conducted_date, conducted_time, total_present, total_absent, is_finalized')
+            .eq('class_subject_id', classSubjectId)
+            .order('conducted_date', { ascending: false });
+
+        if (sessionsError) {
+            console.error('Error fetching sessions:', sessionsError);
+        }
+
+        const totalSessions = sessions?.length || 0;
+
+        // Get all students in the class
+        const { data: classStudents, error: studentsError } = await supabaseAdmin
+            .from('class_students')
+            .select(`
+                student_id,
+                student_profiles (
+                    id,
+                    roll_number,
+                    users (full_name)
+                )
+            `)
+            .eq('class_id', classSubject.class_id)
+            .eq('is_active', true);
+
+        if (studentsError) {
+            console.error('Error fetching students:', studentsError);
+        }
+
+        // Get attendance records for all students across all sessions
+        const sessionIds = (sessions || []).map((s: any) => s.id);
+
+        let studentStats: any[] = [];
+
+        if (sessionIds.length > 0 && classStudents && classStudents.length > 0) {
+            const { data: allRecords, error: recordsError } = await supabaseAdmin
+                .from('attendance_records')
+                .select('student_id, status, session_id')
+                .in('session_id', sessionIds);
+
+            if (recordsError) {
+                console.error('Error fetching records:', recordsError);
+            }
+
+            // Calculate per-student stats
+            studentStats = (classStudents || []).map((cs: any) => {
+                const studentRecords = (allRecords || []).filter((r: any) => r.student_id === cs.student_profiles?.id);
+                const present = studentRecords.filter((r: any) => r.status === 'present' || r.status === 'late').length;
+                const absent = studentRecords.filter((r: any) => r.status === 'absent').length;
+                const percentage = totalSessions > 0 ? Math.round((present / totalSessions) * 100) : 0;
+
+                return {
+                    student_id: cs.student_profiles?.id,
+                    roll_number: cs.student_profiles?.roll_number,
+                    full_name: cs.student_profiles?.users?.full_name,
+                    classes_attended: present,
+                    classes_absent: absent,
+                    total_classes: totalSessions,
+                    percentage,
+                    status: percentage >= 75 ? 'good' : percentage >= 65 ? 'warning' : 'danger',
+                };
+            });
+
+            // Sort by roll number
+            studentStats.sort((a, b) => (a.roll_number || '').localeCompare(b.roll_number || ''));
+        }
+
+        // Calculate overall stats
+        const totalPresent = studentStats.reduce((sum, s) => sum + s.classes_attended, 0);
+        const totalAbsent = studentStats.reduce((sum, s) => sum + s.classes_absent, 0);
+        const avgPercentage = studentStats.length > 0
+            ? Math.round(studentStats.reduce((sum, s) => sum + s.percentage, 0) / studentStats.length)
+            : 0;
+
+        const subjectData = Array.isArray(classSubject.subjects) ? classSubject.subjects[0] : classSubject.subjects;
+        const classData = Array.isArray(classSubject.classes) ? classSubject.classes[0] : classSubject.classes;
+
+        res.json({
+            success: true,
+            data: {
+                class_subject_id: classSubjectId,
+                subject_name: subjectData?.subject_name,
+                subject_code: subjectData?.subject_code,
+                class_label: classData?.class_label,
+                stats: {
+                    total_sessions: totalSessions,
+                    total_students: studentStats.length,
+                    average_percentage: avgPercentage,
+                    sessions_today: sessions?.filter((s: any) =>
+                        s.conducted_date === new Date().toISOString().split('T')[0]
+                    ).length || 0,
+                },
+                sessions: (sessions || []).slice(0, 10).map((s: any) => ({
+                    id: s.id,
+                    conducted_date: s.conducted_date,
+                    conducted_time: s.conducted_time,
+                    total_present: s.total_present,
+                    total_absent: s.total_absent,
+                    is_finalized: s.is_finalized,
+                })),
+                students: studentStats,
+            },
+        });
+    } catch (error) {
+        console.error('Error in GET /attendance/class-subject/:classSubjectId/stats:', error);
         res.status(500).json({ success: false, message: 'Internal server error' });
     }
 });

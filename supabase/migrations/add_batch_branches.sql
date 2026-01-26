@@ -35,7 +35,7 @@ ALTER TABLE batch_branches ENABLE ROW LEVEL SECURITY;
 -- Allow all operations for now (adjust based on your needs)
 CREATE POLICY "Allow all on batch_branches" ON batch_branches
   FOR ALL USING (true) WITH CHECK (true);
-
+ 
 -- ============================================
 -- DONE!
 -- ============================================
