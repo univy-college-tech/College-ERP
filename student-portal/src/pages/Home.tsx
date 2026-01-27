@@ -5,7 +5,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { Header, PageContainer, Card, Badge, LoadingSpinner, EmptyState, BottomNav } from '../components/Layout';
+import { PageContainer, Card, Badge, LoadingSpinner, EmptyState, BottomNav } from '../components/Layout';
 
 // ============================================
 // Types
@@ -61,9 +61,13 @@ function formatTime(time: string): string {
     const hours = parts[0] || '0';
     const minutes = parts[1] || '00';
     const h = parseInt(hours);
-    const ampm = h >= 12 ? 'PM' : 'AM';
+    const ampm = h >= 12 ? 'pm' : 'am';
     const hour12 = h % 12 || 12;
-    return `${hour12}:${minutes} ${ampm}`;
+    // For hour slots (:00), just show hour + am/pm. For half hours, show minutes too.
+    if (minutes === '00') {
+        return `${hour12}${ampm}`;
+    }
+    return `${hour12}:${minutes}${ampm}`;
 }
 
 function formatTimeRange(start: string, end: string): string {
@@ -287,93 +291,380 @@ function TimelineView({ classes }: { classes: TodayClass[] }) {
 }
 
 // ============================================
-// Weekly Grid View (Desktop)
+// Subject Colors for visual distinction
+// ============================================
+const SUBJECT_COLORS = [
+    { bg: 'rgba(59, 130, 246, 0.15)', border: '#3b82f6', text: '#60a5fa' },
+    { bg: 'rgba(16, 185, 129, 0.15)', border: '#10b981', text: '#34d399' },
+    { bg: 'rgba(245, 158, 11, 0.15)', border: '#f59e0b', text: '#fbbf24' },
+    { bg: 'rgba(239, 68, 68, 0.15)', border: '#ef4444', text: '#f87171' },
+    { bg: 'rgba(139, 92, 246, 0.15)', border: '#8b5cf6', text: '#a78bfa' },
+    { bg: 'rgba(236, 72, 153, 0.15)', border: '#ec4899', text: '#f472b6' },
+    { bg: 'rgba(6, 182, 212, 0.15)', border: '#06b6d4', text: '#22d3ee' },
+    { bg: 'rgba(132, 204, 22, 0.15)', border: '#84cc16', text: '#a3e635' },
+];
+
+function getSubjectColor(subjectCode: string): typeof SUBJECT_COLORS[0] {
+    let hash = 0;
+    for (let i = 0; i < subjectCode.length; i++) {
+        hash = subjectCode.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    return SUBJECT_COLORS[Math.abs(hash) % SUBJECT_COLORS.length];
+}
+
+// ============================================
+// Mobile Weekly Timetable Component
+// ============================================
+function MobileWeeklyTimetable({ timetable }: { timetable: WeeklyTimetable[] }) {
+    const [selectedDay, setSelectedDay] = useState(() => {
+        const today = new Date().getDay();
+        return today >= 1 && today <= 5 ? today : 1;
+    });
+
+    const days = [
+        { num: 1, short: 'Mon', full: 'Monday' },
+        { num: 2, short: 'Tue', full: 'Tuesday' },
+        { num: 3, short: 'Wed', full: 'Wednesday' },
+        { num: 4, short: 'Thu', full: 'Thursday' },
+        { num: 5, short: 'Fri', full: 'Friday' },
+    ];
+
+    const today = new Date().getDay();
+    const dayClasses = timetable
+        .filter(slot => slot.day_of_week === selectedDay)
+        .sort((a, b) => {
+            const aMin = parseInt(a.start_time.split(':')[0] || '0') * 60 + parseInt(a.start_time.split(':')[1] || '0');
+            const bMin = parseInt(b.start_time.split(':')[0] || '0') * 60 + parseInt(b.start_time.split(':')[1] || '0');
+            return aMin - bMin;
+        });
+
+    return (
+        <div className="bg-bg-secondary/50 rounded-2xl p-4 border border-white/5">
+            {/* Day Selector Tabs */}
+            <div className="flex gap-1 mb-4 overflow-x-auto pb-2 -mx-1 px-1">
+                {days.map(day => (
+                    <button
+                        key={day.num}
+                        onClick={() => setSelectedDay(day.num)}
+                        className={`flex-shrink-0 flex flex-col items-center px-4 py-2 rounded-xl transition-all ${selectedDay === day.num
+                            ? 'bg-accent-teal text-white shadow-lg shadow-accent-teal/20'
+                            : day.num === today
+                                ? 'bg-accent-teal/10 text-accent-teal border border-accent-teal/30'
+                                : 'bg-bg-tertiary text-text-secondary hover:text-text-primary'
+                            }`}
+                    >
+                        <span className="text-xs font-medium">{day.short}</span>
+                        {day.num === today && selectedDay !== day.num && (
+                            <span className="w-1.5 h-1.5 rounded-full bg-accent-teal mt-1" />
+                        )}
+                    </button>
+                ))}
+            </div>
+
+            {/* Schedule for Selected Day */}
+            <div className="space-y-3">
+                {dayClasses.length > 0 ? (
+                    dayClasses.map(cls => {
+                        const color = getSubjectColor(cls.subject_code);
+                        const isCurrent = selectedDay === today && isCurrentClass(cls.start_time, cls.end_time);
+                        const upcoming = selectedDay === today && isUpcoming(cls.start_time);
+
+                        return (
+                            <div
+                                key={cls.id}
+                                className={`rounded-xl p-4 transition-all ${isCurrent ? 'ring-2 ring-accent-teal/50' : ''}`}
+                                style={{
+                                    backgroundColor: color.bg,
+                                    borderLeft: `4px solid ${color.border}`,
+                                }}
+                            >
+                                <div className="flex items-start justify-between">
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <span className="text-sm font-bold" style={{ color: color.text }}>
+                                                {formatTime(cls.start_time)} - {formatTime(cls.end_time)}
+                                            </span>
+                                            {isCurrent && (
+                                                <Badge variant="success">Now</Badge>
+                                            )}
+                                            {upcoming && !isCurrent && (
+                                                <Badge variant="info">Next</Badge>
+                                            )}
+                                        </div>
+                                        <h4 className="font-semibold text-text-primary">{cls.subject_name}</h4>
+                                        <div className="flex items-center gap-3 mt-1 text-xs text-text-muted">
+                                            <span className="flex items-center gap-1">
+                                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                                                </svg>
+                                                {cls.professor_name || 'TBA'}
+                                            </span>
+                                            {cls.room_number && (
+                                                <span className="flex items-center gap-1">
+                                                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                                                    </svg>
+                                                    Room {cls.room_number}
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <span className="text-xs px-2 py-1 rounded-full bg-white/5" style={{ color: color.text }}>
+                                        {cls.subject_code}
+                                    </span>
+                                </div>
+                            </div>
+                        );
+                    })
+                ) : (
+                    <div className="text-center py-8">
+                        <div className="w-12 h-12 rounded-full bg-bg-tertiary flex items-center justify-center mx-auto mb-3">
+                            <svg className="w-6 h-6 text-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                        </div>
+                        <p className="text-text-secondary font-medium">No classes</p>
+                        <p className="text-xs text-text-muted mt-1">
+                            You're free on {days.find(d => d.num === selectedDay)?.full}!
+                        </p>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
+
+// ============================================
+// Weekly Grid View (Responsive)
 // ============================================
 function WeeklyGridView({ timetable }: { timetable: WeeklyTimetable[] }) {
-    const timeSlots = ['08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00'];
-    const days = [1, 2, 3, 4, 5, 6]; // Mon-Sat
-    const today = new Date().getDay() === 0 ? 7 : new Date().getDay();
+    const [visibleDays, setVisibleDays] = useState(5);
+    const [selectedDay, setSelectedDay] = useState(() => {
+        const today = new Date().getDay();
+        return today >= 1 && today <= 5 ? today : 1;
+    });
 
-    // Group timetable by day
+    // Time slots - standard hours from 9 AM to 5 PM
+    const timeSlots = ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00'];
+    const days = [1, 2, 3, 4, 5];
+    const dayFullNames = ['', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+    const today = new Date().getDay() === 0 ? 7 : new Date().getDay();
+    const currentHour = new Date().getHours();
+    const currentMinute = new Date().getMinutes();
+    const isWithinSchedule = currentHour >= 9 && currentHour < 17;
+
+    // Responsive detection
+    useEffect(() => {
+        const handleResize = () => {
+            const width = window.innerWidth;
+            if (width < 640) setVisibleDays(1);
+            else if (width < 1024) setVisibleDays(3);
+            else setVisibleDays(5);
+        };
+        handleResize();
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
+
     const timetableByDay = days.map(day => ({
         day,
         classes: timetable.filter(slot => slot.day_of_week === day)
     }));
 
+    const rowHeight = 50; // Height per hour slot
+
+    // Get days to display
+    const getDaysToShow = () => {
+        if (visibleDays === 1) return [selectedDay];
+        if (visibleDays === 3) {
+            if (selectedDay <= 2) return [1, 2, 3];
+            if (selectedDay >= 4) return [3, 4, 5];
+            return [selectedDay - 1, selectedDay, selectedDay + 1];
+        }
+        return days;
+    };
+    const daysToShow = getDaysToShow();
+
+    const goToPrevDay = () => setSelectedDay(prev => Math.max(1, prev - 1));
+    const goToNextDay = () => setSelectedDay(prev => Math.min(5, prev + 1));
+
     return (
-        <div className="overflow-x-auto">
-            <div className="min-w-[800px]">
-                {/* Header */}
-                <div className="grid grid-cols-7 gap-2 mb-4">
-                    <div className="text-xs font-medium text-text-muted text-center"></div>
-                    {days.map(day => (
-                        <div
-                            key={day}
-                            className={`text-center py-2 rounded-lg ${day === today
-                                ? 'bg-accent-teal text-white font-bold'
-                                : 'text-text-secondary'
-                                }`}
-                        >
-                            {DAY_NAMES[day]}
-                        </div>
-                    ))}
+        <div className="rounded-2xl bg-bg-secondary/50 border border-white/10 overflow-hidden shadow-lg">
+            {/* Header Row: Time label + Day selector with arrows */}
+            <div className="flex border-b border-white/10">
+                {/* Time label (corner 0,0) */}
+                <div className="flex-shrink-0 w-14 h-11 flex items-center justify-center bg-bg-tertiary/50 border-r border-white/10">
+                    <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">Time</span>
                 </div>
 
-                {/* Grid */}
-                <div className="relative" style={{ height: timeSlots.length * 60 }}>
-                    {/* Time slots background */}
-                    {timeSlots.map((time, i) => (
-                        <div
-                            key={time}
-                            className="absolute left-0 right-0 border-t border-white/5 grid grid-cols-7 gap-2"
-                            style={{ top: i * 60, height: 60 }}
+                {/* Day Header with arrows (mobile/tablet) or all days (desktop) */}
+                {visibleDays < 5 ? (
+                    <div className="flex-1 h-11 flex items-center justify-between px-3 bg-bg-tertiary/30">
+                        <button
+                            onClick={goToPrevDay}
+                            disabled={selectedDay === 1}
+                            className="w-9 h-9 flex items-center justify-center rounded-full bg-bg-secondary hover:bg-accent-teal/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
                         >
-                            <div className="text-xs text-text-muted pt-1 text-right pr-2">
+                            <svg className="w-5 h-5 text-text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                            </svg>
+                        </button>
+
+                        <div className="text-center">
+                            <p className={`text-sm font-bold ${selectedDay === today ? 'text-accent-teal' : 'text-text-primary'}`}>
+                                {dayFullNames[selectedDay]}
+                                {selectedDay === today && (
+                                    <span className="ml-2 text-xs font-normal text-accent-teal">(Today)</span>
+                                )}
+                            </p>
+                        </div>
+
+                        <button
+                            onClick={goToNextDay}
+                            disabled={selectedDay === 5}
+                            className="w-9 h-9 flex items-center justify-center rounded-full bg-bg-secondary hover:bg-accent-teal/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                        >
+                            <svg className="w-5 h-5 text-text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                            </svg>
+                        </button>
+                    </div>
+                ) : (
+                    <div className="flex-1 grid grid-cols-5">
+                        {days.map(day => (
+                            <div
+                                key={`h-${day}`}
+                                className={`h-11 flex items-center justify-center font-semibold text-sm border-l border-white/5 ${day === today
+                                    ? 'bg-accent-teal/15 text-accent-teal'
+                                    : 'text-text-secondary'
+                                    }`}
+                            >
+                                {DAY_NAMES[day]}
+                                {day === today && <span className="ml-2 w-2 h-2 rounded-full bg-accent-teal animate-pulse" />}
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+
+            {/* Main Grid: Timeline + Day Columns */}
+            <div className="flex">
+                {/* Time Column - using absolute positioning for proper alignment */}
+                <div className="flex-shrink-0 w-14 bg-bg-tertiary/30 border-r border-white/10 relative" style={{ height: `${timeSlots.length * rowHeight}px` }}>
+                    {timeSlots.map((time, index) => {
+                        const hour = parseInt(time.split(':')[0] || '0');
+                        const minute = parseInt(time.split(':')[1] || '0');
+                        const isLunch = hour === 13 && minute === 0;
+                        const isLunchEnd = hour === 13 && minute === 30;
+                        const isCurrentHour = currentHour === hour && (minute === 0 ? currentMinute < 30 : currentMinute >= 30);
+
+                        return (
+                            <div
+                                key={time}
+                                className={`absolute right-0 pr-2 text-[11px] font-medium -translate-y-1/2 ${isLunch ? 'text-warning font-bold' :
+                                    isLunchEnd ? 'text-warning/70' :
+                                        isCurrentHour ? 'text-accent-teal font-bold' : 'text-text-muted'
+                                    }`}
+                                style={{ top: `${index * rowHeight}px` }}
+                            >
                                 {formatTime(time)}
                             </div>
-                            {days.map(day => (
-                                <div key={day} className="border-l border-white/5" />
-                            ))}
-                        </div>
-                    ))}
+                        );
+                    })}
+                </div>
 
-                    {/* Classes overlay */}
-                    {timetableByDay.map(({ day, classes: dayClasses }) => (
+                {/* Day Columns */}
+                <div className={`flex-1 grid ${visibleDays === 5 ? 'grid-cols-5' : visibleDays === 3 ? 'grid-cols-3' : 'grid-cols-1'}`}>
+                    {daysToShow.map(day => (
                         <div
-                            key={day}
-                            className="absolute"
-                            style={{
-                                left: `${(day) * (100 / 7)}%`,
-                                width: `${100 / 7}%`,
-                                top: 0,
-                                bottom: 0,
-                                paddingLeft: '4px',
-                                paddingRight: '4px',
-                            }}
+                            key={`c-${day}`}
+                            className={`relative border-l border-white/5 ${day === today ? 'bg-accent-teal/5' : ''}`}
+                            style={{ height: `${timeSlots.length * rowHeight}px` }}
                         >
-                            {dayClasses.map(cls => {
-                                const top = getTimePosition(cls.start_time) * 0.75;
-                                const height = getSlotHeight(cls.start_time, cls.end_time) * 0.75;
-                                const isCurrent = day === today && isCurrentClass(cls.start_time, cls.end_time);
+                            {/* Hour grid lines */}
+                            {timeSlots.map((_, i) => (
+                                <div
+                                    key={i}
+                                    className="absolute left-0 right-0 border-t border-white/8"
+                                    style={{ top: `${i * rowHeight}px` }}
+                                />
+                            ))}
+
+                            {/* Lunch break indicator - 1:00-1:30 PM (first half of 1-2 PM slot) */}
+                            <div
+                                className="absolute left-0 right-0 bg-warning/10 flex items-center justify-center pointer-events-none"
+                                style={{
+                                    top: `${4 * rowHeight}px`,
+                                    height: `${rowHeight / 2}px`
+                                }}
+                            >
+                                <span className="text-[9px] font-semibold text-warning/60 uppercase tracking-wider">🍽️ Lunch</span>
+                            </div>
+
+                            {/* Current time indicator */}
+                            {day === today && isWithinSchedule && (
+                                <div
+                                    className="absolute left-0 right-0 h-0.5 bg-error z-20"
+                                    style={{ top: `${(currentHour - 9) * rowHeight + (currentMinute / 60) * rowHeight}px` }}
+                                >
+                                    <div className="absolute -left-1 -top-1 w-2 h-2 rounded-full bg-error shadow-lg shadow-error/50" />
+                                </div>
+                            )}
+
+                            {/* Classes */}
+                            {timetableByDay.find(d => d.day === day)?.classes.map(cls => {
+                                const color = getSubjectColor(cls.subject_code);
+                                const startMin = parseInt(cls.start_time.split(':')[0] || '9') * 60 + parseInt(cls.start_time.split(':')[1] || '0');
+                                const endMin = parseInt(cls.end_time.split(':')[0] || '10') * 60 + parseInt(cls.end_time.split(':')[1] || '0');
+                                const top = ((startMin - 9 * 60) / 60) * rowHeight;
+                                const height = ((endMin - startMin) / 60) * rowHeight;
 
                                 return (
                                     <div
                                         key={cls.id}
-                                        className={`absolute left-1 right-1 rounded-md p-2 overflow-hidden ${isCurrent
-                                            ? 'bg-accent-teal/30 border border-accent-teal'
-                                            : 'bg-bg-secondary/80 border border-white/10'
-                                            }`}
-                                        style={{ top, height: Math.max(height - 4, 40) }}
+                                        className="absolute left-2 right-2 rounded-xl p-2.5 overflow-hidden hover:brightness-110 hover:scale-[1.02] transition-all shadow-md cursor-pointer"
+                                        style={{
+                                            top: `${top + 3}px`,
+                                            height: `${Math.max(height - 6, 40)}px`,
+                                            backgroundColor: color.bg,
+                                            borderLeft: `4px solid ${color.border}`,
+                                        }}
                                     >
-                                        <p className="text-xs font-semibold text-text-primary truncate">
-                                            {cls.subject_name}
-                                        </p>
-                                        <p className="text-xs text-text-muted truncate">
-                                            {cls.room_number && `R${cls.room_number}`}
-                                        </p>
+                                        <p className="text-sm font-bold truncate" style={{ color: color.text }}>{cls.subject_name}</p>
+                                        {height > 50 && (
+                                            <div className="mt-1 space-y-0.5">
+                                                <p className="text-xs text-text-secondary truncate flex items-center gap-1">
+                                                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                                                    </svg>
+                                                    {cls.professor_name || 'TBA'}
+                                                </p>
+                                                {cls.room_number && (
+                                                    <p className="text-xs text-text-muted truncate flex items-center gap-1">
+                                                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                                                        </svg>
+                                                        Room {cls.room_number}
+                                                    </p>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
                                 );
                             })}
+
+                            {/* Empty state */}
+                            {timetableByDay.find(d => d.day === day)?.classes.length === 0 && (
+                                <div className="absolute inset-0 flex items-center justify-center">
+                                    <div className="text-center opacity-50">
+                                        <svg className="w-10 h-10 mx-auto text-text-muted/40 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                        </svg>
+                                        <p className="text-sm text-text-muted">No classes</p>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     ))}
                 </div>
@@ -435,7 +726,7 @@ export default function Home() {
 
     // Check if desktop
     useEffect(() => {
-        const checkDesktop = () => setIsDesktop(window.innerWidth >= 1024);
+        const checkDesktop = () => setIsDesktop(window.innerWidth >= 1440);
         checkDesktop();
         window.addEventListener('resize', checkDesktop);
         return () => window.removeEventListener('resize', checkDesktop);
@@ -554,15 +845,11 @@ export default function Home() {
                 </div>
             )}
 
-            {/* Desktop: Weekly Grid */}
-            {isDesktop && (
-                <div className="mb-6">
-                    <h2 className="text-lg font-bold text-text-primary mb-4">Weekly Timetable</h2>
-                    <Card className="p-4">
-                        <WeeklyGridView timetable={weeklyTimetable} />
-                    </Card>
-                </div>
-            )}
+            {/* Weekly Timetable - Full Grid with all days and time slots */}
+            <div className="mb-6">
+                <h2 className="text-lg font-bold text-text-primary mb-4">Weekly Timetable</h2>
+                <WeeklyGridView timetable={weeklyTimetable} />
+            </div>
 
             {/* Loading State */}
             {loading && (
@@ -589,7 +876,7 @@ export default function Home() {
                 />
             )}
 
-            {/* Empty State */}
+            {/* Empty State for Today */}
             {!loading && !error && schedule?.classes.length === 0 && (
                 <EmptyState
                     icon={
@@ -602,17 +889,19 @@ export default function Home() {
                 />
             )}
 
-            {/* Mobile: Classes */}
+            {/* Mobile: Today's Classes */}
             {!isDesktop && !loading && !error && schedule && schedule.classes.length > 0 && (
-                viewMode === 'list' ? (
-                    <div className="space-y-3">
-                        {schedule.classes.map((cls) => (
-                            <ClassCard key={cls.id} cls={cls} />
-                        ))}
-                    </div>
-                ) : (
-                    <TimelineView classes={schedule.classes} />
-                )
+                <div className="mb-6">
+                    {viewMode === 'list' ? (
+                        <div className="space-y-3">
+                            {schedule.classes.map((cls) => (
+                                <ClassCard key={cls.id} cls={cls} />
+                            ))}
+                        </div>
+                    ) : (
+                        <TimelineView classes={schedule.classes} />
+                    )}
+                </div>
             )}
 
             <BottomNav />

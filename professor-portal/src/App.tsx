@@ -61,6 +61,9 @@ function App() {
                     {/* Marks */}
                     <Route path="/marks" element={<ProtectedRoute><Marks /></ProtectedRoute>} />
 
+                    {/* Timetable - redirect to home since we integrated it there */}
+                    <Route path="/timetable" element={<ProtectedRoute><Home /></ProtectedRoute>} />
+
                     {/* Groups & Communication */}
                     <Route path="/groups" element={<ProtectedRoute><Groups /></ProtectedRoute>} />
                     <Route path="/groups/:groupId" element={<ProtectedRoute><Groups /></ProtectedRoute>} />

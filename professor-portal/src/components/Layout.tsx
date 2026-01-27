@@ -74,8 +74,8 @@ export function BottomNav() {
                     key={item.label}
                     onClick={() => navigate(item.path)}
                     className={`flex flex-col items-center gap-0.5 px-3 py-2 transition-all duration-200 ${isActive(item.path)
-                            ? 'text-primary scale-105'
-                            : 'text-text-secondary hover:text-text-primary'
+                        ? 'text-primary scale-105'
+                        : 'text-text-secondary hover:text-text-primary'
                         }`}
                 >
                     <span className={isActive(item.path) ? 'animate-bounce-subtle' : ''}>
